@@ -94,7 +94,7 @@ def list_artists():
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
-        username = request.form['username']
+        username = request.form['username'].lower()  # Convert to lowercase
         password = request.form['password'].encode('utf-8')
         conn = db_pool.getconn()
         try:
@@ -117,15 +117,17 @@ def login():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form['username']
+        username = request.form['username'].lower()  # Convert to lowercase
         password = request.form['password'].encode('utf-8')
         hashed = bcrypt.hashpw(password, bcrypt.gensalt()).decode('utf-8')
         conn = db_pool.getconn()
         try:
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (username, hashed))
+            cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s) RETURNING id", (username, hashed))
+            user_id = cursor.fetchone()[0]
             conn.commit()
-            return redirect(url_for('login'))
+            session['user_id'] = user_id  # Auto-login
+            return redirect(url_for('home'))
         except Exception as e:
             conn.rollback()
             return render_template('register.html', error=str(e))

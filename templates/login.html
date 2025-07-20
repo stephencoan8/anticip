@@ -27,5 +27,22 @@
                  Don't have an account? <a href="/register" class="text-green-600 hover:underline">Sign up</a>
              </p>
          </div>
+         <script>
+             const passwordInput = document.getElementById('password');
+             let timeoutId;
+             passwordInput.addEventListener('input', function() {
+                 const value = this.value;
+                 if (value.length > 0) {
+                     const lastChar = value.slice(-1);
+                     this.type = 'text';
+                     this.value = '*'.repeat(value.length - 1) + lastChar;
+                     clearTimeout(timeoutId);
+                     timeoutId = setTimeout(() => {
+                         this.type = 'password';
+                         this.value = value;
+                     }, 500); // Show last char for 0.5s
+                 }
+             });
+         </script>
      </body>
      </html>
