@@ -32,11 +32,16 @@ conn.commit()
 def home():
     # Example: Get artist data for The Beatles
     artist = sp.artist("3WrFJ7ztbogyGnTHbHJFl2")
-    # Insert into database
     cursor.execute("INSERT INTO artists (spotify_id, name, listeners) VALUES (%s, %s, %s) ON CONFLICT DO NOTHING",
                   (artist['id'], artist['name'], artist['followers']['total']))
     conn.commit()
     return f"Artist: {artist['name']}, Monthly Listeners: {artist['followers']['total']}"
+
+@app.route('/artists')
+def list_artists():
+    cursor.execute("SELECT name, listeners FROM artists")
+    artists = cursor.fetchall()
+    return '<br>'.join([f"{name}: {listeners} listeners" for name, listeners in artists])
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
