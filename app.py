@@ -1,12 +1,14 @@
-from flask import Flask
+from flask import Flask, render_template, request, redirect, url_for, session
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 from dotenv import load_dotenv
 import os
 import psycopg2
 from psycopg2 import pool
+import bcrypt
 
 app = Flask(__name__)
+app.secret_key = os.urandom(24)  # For session management
 
 # Load environment variables
 load_dotenv()
@@ -36,6 +38,11 @@ try:
             price NUMERIC(10, 2),
             recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username VARCHAR(255) UNIQUE,
+            password VARCHAR(255) NOT NULL
+        );
     """)
     conn.commit()
 except Exception as e:
@@ -47,16 +54,15 @@ finally:
 
 @app.route('/')
 def home():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
     conn = db_pool.getconn()
     try:
         cursor = conn.cursor()
-        # Get artist data for The Beatles
         artist = sp.artist("3WrFJ7ztbogyGnTHbHJFl2")
-        # Insert or update artist
         cursor.execute("INSERT INTO artists (spotify_id, name) VALUES (%s, %s) ON CONFLICT (spotify_id) DO UPDATE SET name = EXCLUDED.name",
                     (artist['id'], artist['name']))
-        # Insert popularity and price
-        price = artist['popularity']  # Use popularity as price
+        price = artist['popularity']
         cursor.execute("INSERT INTO artist_history (spotify_id, popularity, price) VALUES (%s, %s, %s)",
                     (artist['id'], artist['popularity'], price))
         conn.commit()
@@ -70,6 +76,8 @@ def home():
 
 @app.route('/artists')
 def list_artists():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
     conn = db_pool.getconn()
     try:
         cursor = conn.cursor()
@@ -82,6 +90,49 @@ def list_artists():
     finally:
         cursor.close()
         db_pool.putconn(conn)
+
+@app.route('/login', methods=['GET', 'POST'])
+def login():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password'].encode('utf-8')
+        conn = db_pool.getconn()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("SELECT id, password FROM users WHERE username = %s", (username,))
+            user = cursor.fetchone()
+            if user and bcrypt.checkpw(password, user[1].encode('utf-8')):
+                session['user_id'] = user[0]
+                return redirect(url_for('home'))
+            else:
+                return render_template('login.html', error="Invalid username or password")
+        except Exception as e:
+            conn.rollback()
+            return render_template('login.html', error=str(e))
+        finally:
+            cursor.close()
+            db_pool.putconn(conn)
+    return render_template('login.html')
+
+@app.route('/register', methods=['GET', 'POST'])
+def register():
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password'].encode('utf-8')
+        hashed = bcrypt.hashpw(password, bcrypt.gensalt()).decode('utf-8')
+        conn = db_pool.getconn()
+        try:
+            cursor = conn.cursor()
+            cursor.execute("INSERT INTO users (username, password) VALUES (%s, %s)", (username, hashed))
+            conn.commit()
+            return redirect(url_for('login'))
+        except Exception as e:
+            conn.rollback()
+            return render_template('register.html', error=str(e))
+        finally:
+            cursor.close()
+            db_pool.putconn(conn)
+    return render_template('register.html')
 
 if __name__ == '__main__':
     app.run(debug=True, port=5001)
