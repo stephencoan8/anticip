@@ -23,12 +23,14 @@
             <div class="mb-6">
                 <h2 class="text-xl font-semibold mb-2">Your Holdings</h2>
                 {% if holdings %}
-                    <div class="mb-2">Shares Owned: <span class="font-bold">{{ holdings[0] }}</span></div>
-                    <div class="mb-2">Avg. Price Paid: ${{ holdings[1] | float | round(2) }}</div>
-                    <div class="mb-2">Current Price: ${{ current_price | float | round(2) }}</div>
-                    {% set value = holdings[0] * current_price %}
-                    {% set cost = holdings[0] * holdings[1] %}
+                    {% set shares = holdings[0] %}
+                    {% set avg_price = holdings[1] %}
+                    {% set value = shares * current_price %}
+                    {% set cost = shares * avg_price %}
                     {% set gain = value - cost %}
+                    <div class="mb-2">Shares Owned: <span class="font-bold">{{ shares }}</span></div>
+                    <div class="mb-2">Avg. Price Paid: ${{ avg_price | float | round(2) }}</div>
+                    <div class="mb-2">Current Price: ${{ current_price | float | round(2) }}</div>
                     <div class="mb-2">Current Value: ${{ value | round(2) }}</div>
                     <div class="mb-2">Profit/Loss: <span class="font-bold {% if gain >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ gain | round(2) }}</span></div>
                 {% else %}
@@ -93,8 +95,8 @@
         const sharesInput = document.getElementById('shares');
         const modalMath = document.getElementById('modalMath');
         let action = '';
-        let maxShares = {{ holdings[0] if holdings else 0 }};
-        let price = {{ current_price | float | round(2) }};
+        let maxShares = {{ (holdings[0] if holdings else 0) | tojson }};
+        let price = {{ current_price | float | round(2) | tojson }};
         buyBtn.onclick = function() {
             action = 'buy';
             modalTitle.textContent = 'Buy Shares';
