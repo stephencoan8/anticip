@@ -53,6 +53,14 @@ try:
             avg_price NUMERIC(10, 2) NOT NULL,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE TABLE IF NOT EXISTS follows (
+            id SERIAL PRIMARY KEY,
+            follower_id INTEGER REFERENCES users(id),
+            followed_id INTEGER REFERENCES users(id),
+            status VARCHAR(10) DEFAULT 'pending',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT unique_follow UNIQUE(follower_id, followed_id)
+        );
     """)
     conn.commit()
 except Exception as e:
@@ -370,95 +378,214 @@ def sell_artist(spotify_id):
 def portfolio():
     if 'user_id' not in session:
         return redirect(url_for('login'))
+    
     user_id = session['user_id']
-    order = request.args.get('order', 'alphabetical')  # sort type
-    direction = request.args.get('direction', 'asc')   # asc or desc
+    order = request.args.get('order', 'alphabetical')
+    direction = request.args.get('direction', 'asc')
+    
     conn = db_pool.getconn()
     try:
         cursor = conn.cursor()
-        # Get user balance
+        # Get user's balance
         cursor.execute("SELECT balance FROM users WHERE id = %s", (user_id,))
-        balance_row = cursor.fetchone()
-        balance = float(balance_row[0]) if balance_row else 0.0
-        # Get all holdings for user
+        balance_result = cursor.fetchone()
+        if not balance_result or balance_result[0] is None:
+            return "User balance not found", 404
+        balance = float(balance_result[0])
+        
+        # Get all user's holdings with current prices
         cursor.execute("""
-            SELECT b.shares, b.avg_price, a.spotify_id, a.name, a.image_url
+            WITH latest_prices AS (
+                SELECT DISTINCT ON (spotify_id) spotify_id, price
+                FROM artist_history
+                ORDER BY spotify_id, recorded_at DESC
+            )
+            SELECT 
+                a.name,
+                b.shares,
+                b.avg_price,
+                lp.price as current_price,
+                a.spotify_id
             FROM bets b
             JOIN artists a ON b.artist_id = a.id
+            JOIN latest_prices lp ON a.spotify_id = lp.spotify_id
             WHERE b.user_id = %s
         """, (user_id,))
-        rows = cursor.fetchall()
-        holdings = []
-        total_invested = 0.0
-        net_worth = 0.0
-        gain = 0.0
-        winning_count = 0
-        for shares, avg_price, spotify_id, name, image_url in rows:
-            cursor.execute("SELECT price FROM artist_history WHERE spotify_id = %s ORDER BY recorded_at DESC LIMIT 1", (spotify_id,))
-            price_row = cursor.fetchone()
-            current_price = float(price_row[0]) if price_row else 0.0
-            value = shares * current_price
-            invested = shares * float(avg_price)
-            stock_gain = value - invested
-            percent_gain = ((stock_gain / invested) * 100) if invested > 0 else 0.0
-            if stock_gain > 0:
-                winning_count += 1
-            holdings.append({
-                'shares': shares,
-                'avg_price': float(avg_price),
-                'spotify_id': spotify_id,
-                'name': name,
-                'image_url': image_url,
-                'current_price': current_price,
-                'value': value,
-                'gain': stock_gain,
-                'percent_gain': percent_gain
-            })
-            total_invested += invested
-            net_worth += value
-            gain += stock_gain
-        # Sort holdings based on order and direction
-        reverse = direction == 'desc'
-        if order == 'alphabetical':
-            holdings.sort(key=lambda x: x['name'], reverse=reverse)
-        elif order == 'popularity':
-            holdings.sort(key=lambda x: x['current_price'], reverse=reverse)
-        elif order == 'net_holdings':
-            holdings.sort(key=lambda x: x['value'], reverse=reverse)
-        elif order == 'gain':
-            holdings.sort(key=lambda x: x['gain'], reverse=reverse)
-        elif order == 'percent_gain':
-            holdings.sort(key=lambda x: x['percent_gain'], reverse=reverse)
-        percent_winning = (winning_count / len(holdings) * 100) if holdings else 0.0
-        return render_template('portfolio.html', holdings=holdings, net_worth=net_worth, total_invested=total_invested, gain=gain, percent_winning=percent_winning, balance=balance, order=order, direction=direction)
+        
+        holdings = cursor.fetchall()
+        
+        # Calculate portfolio stats with explicit None checks
+        if holdings:
+            total_invested = 0
+            current_value = 0
+            for h in holdings:
+                shares = float(h[1]) if h[1] is not None else 0
+                avg_price = float(h[2]) if h[2] is not None else 0
+                current_price = float(h[3]) if h[3] is not None else 0
+                total_invested += shares * avg_price
+                current_value += shares * current_price
+            
+            gain = current_value - total_invested
+            net_worth = balance + current_value
+            
+            # Calculate percent of holdings that are profitable
+            profitable_holdings = 0
+            for h in holdings:
+                shares = float(h[1]) if h[1] is not None else 0
+                avg_price = float(h[2]) if h[2] is not None else 0
+                current_price = float(h[3]) if h[3] is not None else 0
+                if shares * current_price > shares * avg_price:
+                    profitable_holdings += 1
+            percent_winning = (profitable_holdings / len(holdings) * 100)
+        else:
+            total_invested = 0.0
+            current_value = 0.0
+            gain = 0.0
+            net_worth = balance
+            percent_winning = 0.0
+        
+        return render_template('portfolio.html',
+                            holdings=holdings,
+                            balance=balance,
+                            total_invested=total_invested,
+                            gain=gain,
+                            net_worth=net_worth,
+                            percent_winning=percent_winning,
+                            order=order,
+                            direction=direction)
     except Exception as e:
-        conn.rollback()
         return f"Database error: {str(e)}", 500
     finally:
         cursor.close()
         db_pool.putconn(conn)
 
-@app.route('/delete_artist/<spotify_id>', methods=['POST'])
-def delete_artist(spotify_id):
+# Social Features Routes
+@app.route('/followers')
+def followers():
     if 'user_id' not in session:
         return redirect(url_for('login'))
+    
     conn = db_pool.getconn()
     try:
         cursor = conn.cursor()
-        # Get artist id
-        cursor.execute("SELECT id FROM artists WHERE spotify_id = %s", (spotify_id,))
-        artist_row = cursor.fetchone()
-        if not artist_row:
-            return "Artist not found", 404
-        artist_id = artist_row[0]
-        # Delete related bets
-        cursor.execute("DELETE FROM bets WHERE artist_id = %s", (artist_id,))
-        # Delete related history
-        cursor.execute("DELETE FROM artist_history WHERE spotify_id = %s", (spotify_id,))
-        # Delete artist
-        cursor.execute("DELETE FROM artists WHERE id = %s", (artist_id,))
+        # Get all accepted followers
+        cursor.execute("""
+            SELECT u.id, u.username 
+            FROM follows f 
+            JOIN users u ON f.follower_id = u.id 
+            WHERE f.followed_id = %s AND f.status = 'accepted'
+            ORDER BY u.username
+        """, (session['user_id'],))
+        followers = cursor.fetchall()
+        return render_template('followers.html', followers=followers)
+    except Exception as e:
+        return f"Database error: {str(e)}", 500
+    finally:
+        cursor.close()
+        db_pool.putconn(conn)
+
+@app.route('/following')
+def following():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    conn = db_pool.getconn()
+    try:
+        cursor = conn.cursor()
+        # Get all users that the current user follows
+        cursor.execute("""
+            SELECT u.id, u.username 
+            FROM follows f 
+            JOIN users u ON f.followed_id = u.id 
+            WHERE f.follower_id = %s AND f.status = 'accepted'
+            ORDER BY u.username
+        """, (session['user_id'],))
+        following = cursor.fetchall()
+        return render_template('following.html', following=following)
+    except Exception as e:
+        return f"Database error: {str(e)}", 500
+    finally:
+        cursor.close()
+        db_pool.putconn(conn)
+
+@app.route('/search_users')
+def search_users():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    query = request.args.get('query', '').strip()
+    if not query:
+        return render_template('search_users.html')
+    
+    conn = db_pool.getconn()
+    try:
+        cursor = conn.cursor()
+        # Search for users and get their follow status
+        cursor.execute("""
+            SELECT u.id, u.username,
+                CASE
+                    WHEN f.status IS NULL THEN 'none'
+                    WHEN f.status = 'pending' THEN 'pending'
+                    WHEN f.status = 'accepted' THEN 'following'
+                END as follow_status
+            FROM users u
+            LEFT JOIN follows f ON f.followed_id = u.id AND f.follower_id = %s
+            WHERE u.id != %s AND u.username ILIKE %s
+            ORDER BY u.username
+        """, (session['user_id'], session['user_id'], f'%{query}%'))
+        users = [{'id': id, 'username': username, 'follow_status': status} 
+                for id, username, status in cursor.fetchall()]
+        return render_template('search_users.html', users=users, query=query)
+    except Exception as e:
+        return f"Database error: {str(e)}", 500
+    finally:
+        cursor.close()
+        db_pool.putconn(conn)
+
+@app.route('/pending_requests')
+def pending_requests():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    conn = db_pool.getconn()
+    try:
+        cursor = conn.cursor()
+        # Get all pending follow requests
+        cursor.execute("""
+            SELECT f.id, u.id as follower_id, u.username
+            FROM follows f
+            JOIN users u ON f.follower_id = u.id
+            WHERE f.followed_id = %s AND f.status = 'pending'
+            ORDER BY f.created_at DESC
+        """, (session['user_id'],))
+        requests = [{'id': req_id, 'follower': {'id': user_id, 'username': username}}
+                   for req_id, user_id, username in cursor.fetchall()]
+        return render_template('pending_requests.html', requests=requests)
+    except Exception as e:
+        return f"Database error: {str(e)}", 500
+    finally:
+        cursor.close()
+        db_pool.putconn(conn)
+
+@app.route('/follow/<int:followed_id>', methods=['POST'])
+def follow_user(followed_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    if followed_id == session['user_id']:
+        return "Cannot follow yourself", 400
+    
+    conn = db_pool.getconn()
+    try:
+        cursor = conn.cursor()
+        # Create follow request
+        cursor.execute("""
+            INSERT INTO follows (follower_id, followed_id, status)
+            VALUES (%s, %s, 'pending')
+            ON CONFLICT (follower_id, followed_id) DO NOTHING
+        """, (session['user_id'], followed_id))
         conn.commit()
-        return redirect(url_for('list_artists'))
+        return redirect(url_for('search_users'))
     except Exception as e:
         conn.rollback()
         return f"Database error: {str(e)}", 500
@@ -466,5 +593,136 @@ def delete_artist(spotify_id):
         cursor.close()
         db_pool.putconn(conn)
 
-if __name__ == '__main__':
+@app.route('/follow_response/<int:follow_id>', methods=['POST'])
+def follow_response(follow_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    action = request.form.get('action')
+    if action not in ['accept', 'reject']:
+        return "Invalid action", 400
+    
+    conn = db_pool.getconn()
+    try:
+        cursor = conn.cursor()
+        if action == 'accept':
+            cursor.execute("""
+                UPDATE follows 
+                SET status = 'accepted' 
+                WHERE id = %s AND followed_id = %s
+            """, (follow_id, session['user_id']))
+        else:  # reject
+            cursor.execute("""
+                DELETE FROM follows 
+                WHERE id = %s AND followed_id = %s
+            """, (follow_id, session['user_id']))
+        conn.commit()
+        return redirect(url_for('pending_requests'))
+    except Exception as e:
+        conn.rollback()
+        return f"Database error: {str(e)}", 500
+    finally:
+        cursor.close()
+        db_pool.putconn(conn)
+
+@app.route('/unfollow/<int:followed_id>', methods=['POST'])
+def unfollow_user(followed_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    conn = db_pool.getconn()
+    try:
+        cursor = conn.cursor()
+        cursor.execute("""
+            DELETE FROM follows 
+            WHERE follower_id = %s AND followed_id = %s
+        """, (session['user_id'], followed_id))
+        conn.commit()
+        return redirect(url_for('following'))
+    except Exception as e:
+        conn.rollback()
+        return f"Database error: {str(e)}", 500
+    finally:
+        cursor.close()
+        db_pool.putconn(conn)
+
+@app.route('/user/<int:user_id>/portfolio')
+def view_user_portfolio(user_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    conn = db_pool.getconn()
+    try:
+        cursor = conn.cursor()
+        
+        # Get the user's username
+        cursor.execute("SELECT username FROM users WHERE id = %s", (user_id,))
+        user_result = cursor.fetchone()
+        if not user_result:
+            return "User not found", 404
+        username = user_result[0]
+        
+        # Get user's balance
+        cursor.execute("SELECT balance FROM users WHERE id = %s", (user_id,))
+        balance = cursor.fetchone()[0]
+        
+        # Get all user's holdings with current prices
+        cursor.execute("""
+            WITH latest_prices AS (
+                SELECT DISTINCT ON (spotify_id) spotify_id, price
+                FROM artist_history
+                ORDER BY spotify_id, recorded_at DESC
+            )
+            SELECT 
+                a.name,
+                b.shares,
+                b.avg_price,
+                lp.price as current_price,
+                a.spotify_id
+            FROM bets b
+            JOIN artists a ON b.artist_id = a.id
+            JOIN latest_prices lp ON a.spotify_id = lp.spotify_id
+            WHERE b.user_id = %s
+        """, (user_id,))
+        
+        holdings = cursor.fetchall()
+        
+        # Calculate portfolio stats
+        if holdings:
+            total_invested = sum(h[1] * h[2] for h in holdings)  # shares * avg_price
+            current_value = sum(h[1] * h[3] for h in holdings)  # shares * current_price
+            gain = current_value - total_invested
+            net_worth = balance + current_value
+            
+            # Calculate percent of holdings that are profitable
+            profitable_holdings = sum(1 for h in holdings if h[1] * h[3] > h[1] * h[2])
+            percent_winning = (profitable_holdings / len(holdings) * 100)
+        else:
+            total_invested = 0
+            current_value = 0
+            gain = 0
+            net_worth = balance
+            percent_winning = 0
+        
+        return render_template('user_portfolio.html',
+                            username=username,
+                            user_id=user_id,
+                            holdings=holdings,
+                            balance=balance,
+                            total_invested=total_invested,
+                            gain=gain,
+                            net_worth=net_worth,
+                            percent_winning=percent_winning,
+                            is_own_portfolio=False)
+    except Exception as e:
+        return f"Database error: {str(e)}", 500
+    finally:
+        cursor.close()
+        db_pool.putconn(conn)
+def main():
+    # Initialize Spotify API client and database connection
     app.run(debug=True, port=5001)
+
+if __name__ == '__main__':
+    main()
+

@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ username }}'s Portfolio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen">
+    <div class="container mx-auto p-4">
+        <div class="flex justify-between items-center mb-6">
+            <h1 class="text-3xl font-bold text-green-600">{{ username }}'s Portfolio</h1>
+            <a href="/search_users" class="text-green-600 hover:underline">Back to Search</a>
+        </div>
+
+        <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+            <h2 class="text-xl font-semibold mb-4">Portfolio Summary</h2>
+            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+                <div class="bg-gray-50 p-4 rounded shadow">
+                    <div class="text-gray-500">Total Net Worth</div>
+                    <div class="text-2xl font-bold">${{ net_worth | round(2) }}</div>
+                </div>
+                <div class="bg-gray-50 p-4 rounded shadow">
+                    <div class="text-gray-500">Total Invested</div>
+                    <div class="text-2xl font-bold">${{ total_invested | round(2) }}</div>
+                </div>
+                <div class="bg-gray-50 p-4 rounded shadow">
+                    <div class="text-gray-500">Overall Gain/Loss</div>
+                    <div class="text-2xl font-bold {% if gain >= 0 %}text-green-600{% else %}text-red-600{% endif %}">${{ gain | round(2) }}</div>
+                </div>
+                <div class="bg-gray-50 p-4 rounded shadow">
+                    <div class="text-gray-500">Percent Winning</div>
+                    <div class="text-2xl font-bold">{{ percent_winning | round(2) }}%</div>
+                </div>
+            </div>
+        </div>
+
+        <h2 class="text-xl font-semibold mb-4">{{ username }}'s Holdings</h2>
+        
+        {% if holdings %}
+        <div class="bg-white rounded-lg shadow-md">
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Artist</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shares</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avg. Price</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Gain/Loss</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for holding in holdings %}
+                        {% set shares = holding[1] %}
+                        {% set avg_price = holding[2] %}
+                        {% set current_price = holding[3] %}
+                        {% set current_value = shares * current_price %}
+                        {% set cost = shares * avg_price %}
+                        {% set gain = current_value - cost %}
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <a href="/artist/{{ holding[4] }}" class="text-green-600 hover:underline">{{ holding[0] }}</a>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">{{ shares }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">${{ avg_price | round(2) }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">${{ current_price | round(2) }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap">${{ current_value | round(2) }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap {% if gain >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                                ${{ gain | round(2) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% else %}
+        <div class="bg-white p-6 rounded-lg shadow-md text-center text-gray-600">
+            {{ username }} has no holdings yet.
+        </div>
+        {% endif %}
+    </div>
+</body>
+</html>

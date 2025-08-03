@@ -12,28 +12,39 @@
             <h1 class="text-3xl font-bold text-green-600">Your Portfolio</h1>
             <a href="/artists" class="text-green-600 hover:underline">Back to Artists</a>
         </div>
+
+        <!-- Social Navigation -->
+        <div class="bg-white p-4 rounded-lg shadow-md mb-6">
+            <div class="flex justify-center space-x-6">
+                <a href="/followers" class="text-green-600 hover:text-green-700 hover:underline">Followers</a>
+                <a href="/following" class="text-green-600 hover:text-green-700 hover:underline">Following</a>
+                <a href="/search_users" class="text-green-600 hover:text-green-700 hover:underline">Find Users</a>
+                <a href="/pending_requests" class="text-green-600 hover:text-green-700 hover:underline">Requests</a>
+            </div>
+        </div>
+
         <div class="bg-white p-6 rounded-lg shadow-md mb-6">
             <h2 class="text-xl font-semibold mb-4">Portfolio Summary</h2>
             <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
                 <div class="bg-gray-50 p-4 rounded shadow">
                     <div class="text-gray-500">Total Net Worth</div>
-                    <div class="text-2xl font-bold">${{ net_worth | round(2) }}</div>
+                    <div class="text-2xl font-bold">${{ (net_worth or 0) | round(2) }}</div>
                 </div>
                 <div class="bg-gray-50 p-4 rounded shadow">
                     <div class="text-gray-500">Total Invested</div>
-                    <div class="text-2xl font-bold">${{ total_invested | round(2) }}</div>
+                    <div class="text-2xl font-bold">${{ (total_invested or 0) | round(2) }}</div>
                 </div>
                 <div class="bg-gray-50 p-4 rounded shadow">
                     <div class="text-gray-500">Overall Gain/Loss</div>
-                    <div class="text-2xl font-bold {% if gain >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ gain | round(2) }}</div>
+                    <div class="text-2xl font-bold {% if (gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">${{ (gain or 0) | round(2) }}</div>
                 </div>
                 <div class="bg-gray-50 p-4 rounded shadow">
                     <div class="text-gray-500">Cash Balance</div>
-                    <div class="text-2xl font-bold">${{ balance | round(2) }}</div>
+                    <div class="text-2xl font-bold">${{ (balance or 0) | round(2) }}</div>
                 </div>
                 <div class="bg-gray-50 p-4 rounded shadow col-span-4">
                     <div class="text-gray-500">Percent Winning</div>
-                    <div class="text-2xl font-bold">{{ percent_winning | round(2) }}%</div>
+                    <div class="text-2xl font-bold">{{ (percent_winning or 0) | round(2) }}%</div>
                 </div>
             </div>
         </div>
@@ -72,12 +83,12 @@
                         <img src="{{ holding.image_url }}" alt="{{ holding.name }}" class="w-full h-32 object-cover rounded-md mb-2">
                     {% endif %}
                     <h3 class="text-lg font-bold">{{ holding.name }}</h3>
-                    <div>Shares: <span class="font-bold">{{ holding.shares }}</span></div>
-                    <div>Avg. Price: ${{ holding.avg_price | round(2) }}</div>
-                    <div>Current Price: ${{ holding.current_price | round(2) }}</div>
-                    <div>Value: ${{ holding.value | round(2) }}</div>
-                    <div>Gain/Loss: <span class="font-bold {% if holding.gain >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ holding.gain | round(2) }}</span></div>
-                    <div>Percent Gain/Loss: <span class="font-bold {% if holding.percent_gain >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ holding.percent_gain | round(2) }}%</span></div>
+                    <div>Shares: <span class="font-bold">{{ holding.shares or 0 }}</span></div>
+                    <div>Avg. Price: ${{ (holding.avg_price or 0) | round(2) }}</div>
+                    <div>Current Price: ${{ (holding.current_price or 0) | round(2) }}</div>
+                    <div>Value: ${{ (holding.value or 0) | round(2) }}</div>
+                    <div>Gain/Loss: <span class="font-bold {% if (holding.gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">${{ (holding.gain or 0) | round(2) }}</span></div>
+                    <div>Percent Gain/Loss: <span class="font-bold {% if (holding.percent_gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ (holding.percent_gain or 0) | round(2) }}%</span></div>
                 </div>
             </a>
             {% else %}
