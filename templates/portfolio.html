@@ -1,27 +1,12 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your Portfolio</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-100 min-h-screen">
-    <div class="container mx-auto p-4">
-        <div class="flex justify-between items-center mb-6">
-            <h1 class="text-3xl font-bold text-green-600">Your Portfolio</h1>
-            <a href="/artists" class="text-green-600 hover:underline">Back to Artists</a>
-        </div>
+{% extends "base.html" %}
 
-        <!-- Social Navigation -->
-        <div class="bg-white p-4 rounded-lg shadow-md mb-6">
-            <div class="flex justify-center space-x-6">
-                <a href="/followers" class="text-green-600 hover:text-green-700 hover:underline">Followers</a>
-                <a href="/following" class="text-green-600 hover:text-green-700 hover:underline">Following</a>
-                <a href="/search_users" class="text-green-600 hover:text-green-700 hover:underline">Find Users</a>
-                <a href="/pending_requests" class="text-green-600 hover:text-green-700 hover:underline">Requests</a>
-            </div>
-        </div>
+{% block title %}Your Portfolio - Antici{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold text-green-600">Your Portfolio</h1>
+    </div>
 
         <div class="bg-white p-6 rounded-lg shadow-md mb-6">
             <h2 class="text-xl font-semibold mb-4">Portfolio Summary</h2>
@@ -96,5 +81,5 @@
             {% endfor %}
         </div>
     </div>
-</body>
-</html>
+</div>
+{% endblock %}

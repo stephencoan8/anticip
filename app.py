@@ -412,30 +412,68 @@ def portfolio():
             WHERE b.user_id = %s
         """, (user_id,))
         
-        holdings = cursor.fetchall()
+        raw_holdings = cursor.fetchall()
         
-        # Calculate portfolio stats with explicit None checks
-        if holdings:
-            total_invested = 0
-            current_value = 0
-            for h in holdings:
+        # Process holdings data into objects for template
+        holdings = []
+        total_invested = 0
+        current_value = 0
+        
+        if raw_holdings:
+            for h in raw_holdings:
+                name = h[0]
                 shares = float(h[1]) if h[1] is not None else 0
                 avg_price = float(h[2]) if h[2] is not None else 0
                 current_price = float(h[3]) if h[3] is not None else 0
-                total_invested += shares * avg_price
-                current_value += shares * current_price
+                spotify_id = h[4]
+                
+                # Calculate values for this holding
+                value = shares * current_price
+                cost = shares * avg_price
+                gain = value - cost
+                percent_gain = ((gain / cost) * 100) if cost > 0 else 0
+                
+                # Get image URL for this artist
+                cursor.execute("SELECT image_url FROM artists WHERE spotify_id = %s", (spotify_id,))
+                image_result = cursor.fetchone()
+                image_url = image_result[0] if image_result else None
+                
+                # Create holding object
+                holding = {
+                    'name': name,
+                    'shares': shares,
+                    'avg_price': avg_price,
+                    'current_price': current_price,
+                    'value': value,
+                    'gain': gain,
+                    'percent_gain': percent_gain,
+                    'spotify_id': spotify_id,
+                    'image_url': image_url
+                }
+                holdings.append(holding)
+                
+                # Add to totals
+                total_invested += cost
+                current_value += value
+            
+            # Apply sorting
+            if order == 'alphabetical':
+                holdings.sort(key=lambda x: x['name'].lower(), reverse=(direction == 'desc'))
+            elif order == 'popularity':
+                # For now, sort by name as we don't have popularity in this query
+                holdings.sort(key=lambda x: x['name'].lower(), reverse=(direction == 'desc'))
+            elif order == 'net_holdings':
+                holdings.sort(key=lambda x: x['value'], reverse=(direction == 'desc'))
+            elif order == 'gain':
+                holdings.sort(key=lambda x: x['gain'], reverse=(direction == 'desc'))
+            elif order == 'percent_gain':
+                holdings.sort(key=lambda x: x['percent_gain'], reverse=(direction == 'desc'))
             
             gain = current_value - total_invested
             net_worth = balance + current_value
             
             # Calculate percent of holdings that are profitable
-            profitable_holdings = 0
-            for h in holdings:
-                shares = float(h[1]) if h[1] is not None else 0
-                avg_price = float(h[2]) if h[2] is not None else 0
-                current_price = float(h[3]) if h[3] is not None else 0
-                if shares * current_price > shares * avg_price:
-                    profitable_holdings += 1
+            profitable_holdings = sum(1 for h in holdings if h['gain'] > 0)
             percent_winning = (profitable_holdings / len(holdings) * 100)
         else:
             total_invested = 0.0
@@ -719,6 +757,32 @@ def view_user_portfolio(user_id):
     finally:
         cursor.close()
         db_pool.putconn(conn)
+
+@app.route('/settings')
+def settings():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    # Get user's creation date (if column exists)
+    conn = db_pool.getconn()
+    try:
+        cursor = conn.cursor()
+        # Try to get created_at, but handle case where column doesn't exist
+        try:
+            cursor.execute("SELECT created_at FROM users WHERE id = %s", (session['user_id'],))
+            result = cursor.fetchone()
+            member_since = result[0] if result else None
+        except:
+            # If created_at column doesn't exist, set as None
+            member_since = None
+        
+        return render_template('settings.html', member_since=member_since)
+    except Exception as e:
+        return f"Database error: {str(e)}", 500
+    finally:
+        cursor.close()
+        db_pool.putconn(conn)
+
 def main():
     # Initialize Spotify API client and database connection
     app.run(debug=True, port=5001)

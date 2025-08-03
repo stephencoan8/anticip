@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+
+{% block title %}Your Portfolio - Antici{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold text-green-600">Your Portfolio</h1>
+    </div>
+
+    <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+        <h2 class="text-xl font-semibold mb-4">Portfolio Summary</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="bg-gray-50 p-4 rounded shadow">
+                <div class="text-gray-500">Total Net Worth</div>
+                <div class="text-2xl font-bold">${{ (net_worth or 0) | round(2) }}</div>
+            </div>
+            <div class="bg-gray-50 p-4 rounded shadow">
+                <div class="text-gray-500">Total Invested</div>
+                <div class="text-2xl font-bold">${{ (total_invested or 0) | round(2) }}</div>
+            </div>
+            <div class="bg-gray-50 p-4 rounded shadow">
+                <div class="text-gray-500">Overall Gain/Loss</div>
+                <div class="text-2xl font-bold {% if (gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">${{ (gain or 0) | round(2) }}</div>
+            </div>
+            <div class="bg-gray-50 p-4 rounded shadow">
+                <div class="text-gray-500">Cash Balance</div>
+                <div class="text-2xl font-bold">${{ (balance or 0) | round(2) }}</div>
+            </div>
+            <div class="bg-gray-50 p-4 rounded shadow col-span-4">
+                <div class="text-gray-500">Percent Winning</div>
+                <div class="text-2xl font-bold">{{ (percent_winning or 0) | round(2) }}%</div>
+            </div>
+        </div>
+    </div>
+
+    <h2 class="text-xl font-semibold mb-4">Your Holdings</h2>
+    <!-- Sort dropdown and arrow -->
+    <form method="get" id="sortForm" class="flex items-center gap-2 mb-4">
+        <label for="order" class="font-medium">Order by:</label>
+        <input type="hidden" name="direction" id="directionInput" value="{{ direction }}">
+        <select name="order" id="order" class="border rounded px-2 py-1" onchange="document.getElementById('sortForm').submit()">
+            <option value="alphabetical" {% if order == 'alphabetical' %}selected{% endif %}>Alphabetical</option>
+            <option value="popularity" {% if order == 'popularity' %}selected{% endif %}>Popularity</option>
+            <option value="net_holdings" {% if order == 'net_holdings' %}selected{% endif %}>Net Holdings</option>
+            <option value="gain" {% if order == 'gain' %}selected{% endif %}>Biggest Gain/Loss ($)</option>
+            <option value="percent_gain" {% if order == 'percent_gain' %}selected{% endif %}>Biggest Gain/Loss (%)</option>
+        </select>
+        <button type="button" onclick="toggleDirection()" class="ml-2">
+            {% if direction == 'asc' %}
+                ↑
+            {% else %}
+                ↓
+            {% endif %}
+        </button>
+    </form>
+    
+    <script>
+    function toggleDirection() {
+        const directionInput = document.getElementById('directionInput');
+        directionInput.value = directionInput.value === 'asc' ? 'desc' : 'asc';
+        document.getElementById('sortForm').submit();
+    }
+    </script>
+    
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {% for holding in holdings %}
+        <a href="/artist/{{ holding.spotify_id }}" class="block">
+            <div class="bg-white p-4 rounded-lg shadow-md hover:shadow-lg transition">
+                {% if holding.image_url %}
+                    <img src="{{ holding.image_url }}" alt="{{ holding.name }}" class="w-full h-32 object-cover rounded-md mb-2">
+                {% endif %}
+                <h3 class="text-lg font-bold">{{ holding.name }}</h3>
+                <div>Shares: <span class="font-bold">{{ holding.shares or 0 }}</span></div>
+                <div>Avg. Price: ${{ (holding.avg_price or 0) | round(2) }}</div>
+                <div>Current Price: ${{ (holding.current_price or 0) | round(2) }}</div>
+                <div>Value: ${{ (holding.value or 0) | round(2) }}</div>
+                <div>Gain/Loss: <span class="font-bold {% if (holding.gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">${{ (holding.gain or 0) | round(2) }}</span></div>
+                <div>Percent Gain/Loss: <span class="font-bold {% if (holding.percent_gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ (holding.percent_gain or 0) | round(2) }}%</span></div>
+            </div>
+        </a>
+        {% else %}
+        <div class="text-center text-gray-500 col-span-3">You do not own any stocks yet.</div>
+        {% endfor %}
+    </div>
+</div>
+{% endblock %}

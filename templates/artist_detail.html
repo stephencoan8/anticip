@@ -1,138 +1,139 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Artist Detail</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-</head>
-<body class="bg-gray-100 min-h-screen">
-    <div class="container mx-auto p-4">
-        <div class="flex justify-between items-center mb-4">
-            <a href="/artists" class="text-green-600 hover:underline inline-block">&larr; Back to Artists</a>
-            <form action="/delete_artist/{{ request.view_args['spotify_id'] }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this artist? This will remove all history and bets for this artist.')">
-                <button type="submit" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">Delete Artist</button>
-            </form>
-        </div>
-        <div class="bg-white p-6 rounded-lg shadow-md">
-            <h1 class="text-2xl font-bold text-gray-800 mb-2">{{ artist[0] }}</h1>
-            {% if artist[1] %}
-                <img src="{{ artist[1] }}" alt="{{ artist[0] }}" class="w-48 h-48 object-cover rounded-md mb-4">
+{% extends "base.html" %}
+
+{% block title %}{{ artist[0] }} - Antici{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-6xl mx-auto">
+    <div class="flex justify-between items-center mb-4">
+        <h1 class="text-2xl font-bold text-gray-800">{{ artist[0] }}</h1>
+        <form action="/delete_artist/{{ request.view_args['spotify_id'] }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this artist? This will remove all history and bets for this artist.')">
+            <button type="submit" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">Delete Artist</button>
+        </form>
+    </div>
+    <div class="bg-white p-6 rounded-lg shadow-md">
+        {% if artist[1] %}
+            <img src="{{ artist[1] }}" alt="{{ artist[0] }}" class="w-48 h-48 object-cover rounded-md mb-4">
+        {% endif %}
+        <div class="mb-6">
+            <h2 class="text-xl font-semibold mb-2">Your Holdings</h2>
+            {% if holdings %}
+                {% set shares = holdings[0] %}
+                {% set avg_price = holdings[1] %}
+                {% set value = shares * current_price %}
+                {% set cost = shares * avg_price %}
+                {% set gain = value - cost %}
+                <div class="mb-2">Shares Owned: <span class="font-bold">{{ shares }}</span></div>
+                <div class="mb-2">Avg. Price Paid: ${{ avg_price | float | round(2) }}</div>
+                <div class="mb-2">Current Price: ${{ current_price | float | round(2) }}</div>
+                <div class="mb-2">Current Value: ${{ value | round(2) }}</div>
+                <div class="mb-2">Profit/Loss: <span class="font-bold {% if gain >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ gain | round(2) }}</span></div>
+            {% else %}
+                <div class="text-gray-500">You do not own any shares in this artist.</div>
             {% endif %}
-            <div class="mb-6">
-                <h2 class="text-xl font-semibold mb-2">Your Holdings</h2>
-                {% if holdings %}
-                    {% set shares = holdings[0] %}
-                    {% set avg_price = holdings[1] %}
-                    {% set value = shares * current_price %}
-                    {% set cost = shares * avg_price %}
-                    {% set gain = value - cost %}
-                    <div class="mb-2">Shares Owned: <span class="font-bold">{{ shares }}</span></div>
-                    <div class="mb-2">Avg. Price Paid: ${{ avg_price | float | round(2) }}</div>
-                    <div class="mb-2">Current Price: ${{ current_price | float | round(2) }}</div>
-                    <div class="mb-2">Current Value: ${{ value | round(2) }}</div>
-                    <div class="mb-2">Profit/Loss: <span class="font-bold {% if gain >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ gain | round(2) }}</span></div>
-                {% else %}
-                    <div class="text-gray-500">You do not own any shares in this artist.</div>
-                {% endif %}
-                <div class="flex gap-4 mt-4">
-                    <button id="buyBtn" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Buy Shares</button>
-                    <button id="sellBtn" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700" {% if not holdings or holdings[0] == 0 %}disabled class="opacity-50 cursor-not-allowed"{% endif %}>Sell Shares</button>
-                </div>
+            <div class="flex gap-4 mt-4">
+                <button id="buyBtn" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Buy Shares</button>
+                <button id="sellBtn" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700" {% if not holdings or holdings[0] == 0 %}disabled class="opacity-50 cursor-not-allowed"{% endif %}>Sell Shares</button>
             </div>
-            <h2 class="text-xl font-semibold mb-4">Stock Price History</h2>
-            <canvas id="priceChart" width="400" height="200"></canvas>
         </div>
+        <h2 class="text-xl font-semibold mb-4">Stock Price History</h2>
+        <canvas id="priceChart" width="400" height="200"></canvas>
     </div>
-    <!-- Buy/Sell Modal -->
-    <div id="modalBg" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 hidden">
-        <div id="modalBox" class="bg-white rounded-lg shadow-lg p-6 w-full max-w-sm relative">
-            <button id="closeModal" class="absolute top-2 right-2 text-gray-400 hover:text-gray-600">&times;</button>
-            <h3 id="modalTitle" class="text-xl font-bold mb-4"></h3>
-            <form id="modalForm" method="POST">
-                <div class="mb-4">
-                    <label for="shares" class="block mb-2">Number of Shares</label>
-                    <input type="number" id="shares" name="shares" min="1" value="1" class="w-full border rounded px-2 py-1">
-                </div>
-                <div class="mb-2" id="modalMath"></div>
-                <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 w-full" id="confirmBtn">Confirm</button>
-            </form>
-        </div>
+</div>
+
+<!-- Buy/Sell Modal -->
+<div id="modalBg" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 hidden">
+    <div id="modalBox" class="bg-white rounded-lg shadow-lg p-6 w-full max-w-sm relative">
+        <button id="closeModal" class="absolute top-2 right-2 text-gray-400 hover:text-gray-600">&times;</button>
+        <h3 id="modalTitle" class="text-xl font-bold mb-4"></h3>
+        <form id="modalForm" method="POST">
+            <div class="mb-4">
+                <label for="shares" class="block mb-2">Number of Shares</label>
+                <input type="number" id="shares" name="shares" min="1" value="1" class="w-full border rounded px-2 py-1">
+            </div>
+            <div class="mb-2" id="modalMath"></div>
+            <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 w-full" id="confirmBtn">Confirm</button>
+        </form>
     </div>
-    <script>
-        const history = {{ history|tojson|safe }};
-        const labels = history.map(h => new Date(h[0]).toLocaleString());
-        const data = history.map(h => h[1]);
-        new Chart(document.getElementById('priceChart'), {
-            type: 'line',
-            data: {
-                labels: labels,
-                datasets: [{
-                    label: 'Stock Price',
-                    data: data,
-                    borderColor: 'rgb(34,197,94)',
-                    backgroundColor: 'rgba(34,197,94,0.2)',
-                    fill: true,
-                    tension: 0.3
-                }]
-            },
-            options: {
-                scales: {
-                    x: { title: { display: true, text: 'Date' } },
-                    y: { title: { display: true, text: 'Price' } }
-                }
-            }
-        });
-        // Modal logic
-        const buyBtn = document.getElementById('buyBtn');
-        const sellBtn = document.getElementById('sellBtn');
-        const modalBg = document.getElementById('modalBg');
-        const modalBox = document.getElementById('modalBox');
-        const closeModal = document.getElementById('closeModal');
-        const modalTitle = document.getElementById('modalTitle');
-        const modalForm = document.getElementById('modalForm');
-        const sharesInput = document.getElementById('shares');
-        const modalMath = document.getElementById('modalMath');
-        let action = '';
-        let maxShares = {{ (holdings[0] if holdings else 0) | tojson }};
-        let price = {{ current_price | float | round(2) | tojson }};
-        buyBtn.onclick = function() {
-            action = 'buy';
-            modalTitle.textContent = 'Buy Shares';
-            modalForm.action = '/buy/{{ request.view_args["spotify_id"] }}';
-            sharesInput.value = 1;
-            sharesInput.max = '';
-            updateMath();
-            modalBg.classList.remove('hidden');
-        };
-        sellBtn.onclick = function() {
-            action = 'sell';
-            modalTitle.textContent = 'Sell Shares';
-            modalForm.action = '/sell/{{ request.view_args["spotify_id"] }}';
-            sharesInput.value = 1;
-            sharesInput.max = maxShares;
-            updateMath();
-            modalBg.classList.remove('hidden');
-        };
-        closeModal.onclick = function() {
-            modalBg.classList.add('hidden');
-        };
-        sharesInput.oninput = updateMath;
-        function updateMath() {
-            let shares = parseInt(sharesInput.value) || 0;
-            if (action === 'buy') {
-                modalMath.innerHTML = `Price per Share: $${price}<br>Total Cost: $${(shares * price).toFixed(2)}`;
-            } else if (action === 'sell') {
-                modalMath.innerHTML = `Price per Share: $${price}<br>Total Value: $${(shares * price).toFixed(2)}<br>Max Shares: ${maxShares}`;
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+    const history = {{ history|tojson|safe }};
+    const labels = history.map(h => new Date(h[0]).toLocaleString());
+    const data = history.map(h => h[1]);
+    new Chart(document.getElementById('priceChart'), {
+        type: 'line',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Stock Price',
+                data: data,
+                borderColor: 'rgb(34,197,94)',
+                backgroundColor: 'rgba(34,197,94,0.2)',
+                fill: true,
+                tension: 0.3
+            }]
+        },
+        options: {
+            scales: {
+                x: { title: { display: true, text: 'Date' } },
+                y: { title: { display: true, text: 'Price' } }
             }
         }
-        // Blur background when modal is open
-        modalBg.addEventListener('click', function(e) {
-            if (e.target === modalBg) {
-                modalBg.classList.add('hidden');
-            }
-        });
-    </script>
-</body>
-</html>
+    });
+    // Modal logic
+    const buyBtn = document.getElementById('buyBtn');
+    const sellBtn = document.getElementById('sellBtn');
+    const modalBg = document.getElementById('modalBg');
+    const modalBox = document.getElementById('modalBox');
+    const closeModal = document.getElementById('closeModal');
+    const modalTitle = document.getElementById('modalTitle');
+    const modalForm = document.getElementById('modalForm');
+    const sharesInput = document.getElementById('shares');
+    const modalMath = document.getElementById('modalMath');
+    let action = '';
+    let maxShares = {{ (holdings[0] if holdings else 0) | tojson }};
+    let price = {{ current_price | float | round(2) | tojson }};
+    buyBtn.onclick = function() {
+        action = 'buy';
+        modalTitle.textContent = 'Buy Shares';
+        modalForm.action = '/buy/{{ request.view_args["spotify_id"] }}';
+        sharesInput.value = 1;
+        sharesInput.max = '';
+        updateMath();
+        modalBg.classList.remove('hidden');
+    };
+    sellBtn.onclick = function() {
+        action = 'sell';
+        modalTitle.textContent = 'Sell Shares';
+        modalForm.action = '/sell/{{ request.view_args["spotify_id"] }}';
+        sharesInput.value = 1;
+        sharesInput.max = maxShares;
+        updateMath();
+        modalBg.classList.remove('hidden');
+    };
+    closeModal.onclick = function() {
+        modalBg.classList.add('hidden');
+    };
+    sharesInput.oninput = updateMath;
+    function updateMath() {
+        let shares = parseInt(sharesInput.value) || 0;
+        if (action === 'buy') {
+            modalMath.innerHTML = `Price per Share: $${price}<br>Total Cost: $${(shares * price).toFixed(2)}`;
+        } else if (action === 'sell') {
+            modalMath.innerHTML = `Price per Share: $${price}<br>Total Value: $${(shares * price).toFixed(2)}<br>Max Shares: ${maxShares}`;
+        }
+    }
+    // Blur background when modal is open
+    modalBg.addEventListener('click', function(e) {
+        if (e.target === modalBg) {
+            modalBg.classList.add('hidden');
+        }
+    });
+</script>
+{% endblock %}

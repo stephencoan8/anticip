@@ -1,23 +1,18 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Antici - Artists</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-100 min-h-screen">
-    <div class="container mx-auto p-4">
-        <div class="flex justify-between items-center mb-2">
-            <h1 class="text-3xl font-bold text-green-600">Antici - Artist Stocks</h1>
-            <a href="/portfolio" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">My Portfolio</a>
-        </div>
-        <div class="mb-4 flex justify-center">
-            <form action="/artists" method="GET" class="w-full max-w-md">
-                <input type="text" name="search" value="{{ search_query }}" placeholder="Search artists..." class="p-2 w-full border rounded-md focus:ring-green-500 focus:border-green-500">
-                <button type="submit" class="mt-2 bg-green-600 text-white p-2 rounded-md hover:bg-green-700 w-full">Search</button>
-            </form>
-        </div>
+{% extends "base.html" %}
+
+{% block title %}Artists - Antici{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto">
+    <div class="flex justify-between items-center mb-2">
+        <h1 class="text-3xl font-bold text-green-600">Artist Stocks</h1>
+    </div>
+    <div class="mb-4 flex justify-center">
+        <form action="/artists" method="GET" class="w-full max-w-md">
+            <input type="text" name="search" value="{{ search_query }}" placeholder="Search artists..." class="p-2 w-full border rounded-md focus:ring-green-500 focus:border-green-500">
+            <button type="submit" class="mt-2 bg-green-600 text-white p-2 rounded-md hover:bg-green-700 w-full">Search</button>
+        </form>
+    </div>
         <h2 class="text-xl font-semibold mb-4">Artists</h2>
         <!-- Sort dropdown and arrow for artists -->
         <form method="get" id="artistSortForm" class="flex items-center gap-2 mb-4">
@@ -60,19 +55,13 @@
                 </a>
                 {% endfor %}
             {% else %}
-                <p class="text-center text-gray-500">No artists found</p>
-            {% endif %}
-        </div>
-        <div class="mt-4 flex justify-between">
-            <a href="/add_artist" class="text-green-600 hover:underline">Add Artist</a>
-            <a href="/logout" class="text-green-600 hover:underline">Log out</a>
-        </div>
-        <form action="/refresh_artists" method="POST" class="fixed bottom-6 right-6">
-            <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-green-700 flex items-center">
-                <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582M20 20v-5h-.581M5.635 19.364A9 9 0 1112 21v-1m0-16V3a9 9 0 016.364 15.364" /></svg>
-                Refresh Current Popularity
-            </button>
-        </form>
+                <p class="text-center text-gray-500">No artists found</p>        {% endif %}
     </div>
-</body>
-</html>
+    <form action="/refresh_artists" method="POST" class="fixed bottom-6 right-6">
+        <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-green-700 flex items-center">
+            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582M20 20v-5h-.581M5.635 19.364A9 9 0 1112 21v-1m0-16V3a9 9 0 016.364 15.364" /></svg>
+            Refresh Current Popularity
+        </button>
+    </form>
+</div>
+{% endblock %}

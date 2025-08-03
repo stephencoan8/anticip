@@ -1,66 +1,61 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Search Users</title>
-    <script src="https://cdn.tailwindcss.com"></script>
-</head>
-<body class="bg-gray-100 min-h-screen">
-    <div class="container mx-auto p-4">
-        <h1 class="text-2xl font-bold mb-6">Search Users</h1>
-        
-        <!-- Search Form -->
-        <div class="bg-white p-6 rounded-lg shadow-md mb-6">
-            <form method="GET" action="/search_users" class="flex gap-4">
-                <input type="text" name="query" value="{{ query or '' }}" 
-                       placeholder="Search by username..." 
-                       class="flex-1 p-2 border rounded">
-                <button type="submit" 
-                        class="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700">
-                    Search
-                </button>
-            </form>
-        </div>
+{% extends "base.html" %}
 
-        <!-- Search Results -->
-        {% if users %}
-        <div class="bg-white p-6 rounded-lg shadow-md">
-            <h2 class="text-xl font-semibold mb-4">Results</h2>
-            <div class="space-y-4">
-                {% for user in users %}
-                <div class="flex items-center justify-between border-b pb-4">
-                    <div>
-                        <span class="font-medium">{{ user.username }}</span>
-                    </div>
-                    <div>
-                        {% if user.follow_status == 'none' %}
-                            <form action="/follow/{{ user.id }}" method="POST" class="inline">
-                                <button type="submit" 
-                                        class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
-                                    Follow
-                                </button>
-                            </form>
-                        {% elif user.follow_status == 'pending' %}
-                            <span class="text-yellow-600">Request Pending</span>
-                        {% elif user.follow_status == 'following' %}
-                            <form action="/unfollow/{{ user.id }}" method="POST" class="inline">
-                                <button type="submit" 
-                                        class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
-                                    Unfollow
-                                </button>
-                            </form>
-                        {% endif %}
-                    </div>
-                </div>
-                {% endfor %}
-            </div>
-        </div>
-        {% elif query %}
-        <div class="bg-white p-6 rounded-lg shadow-md text-center text-gray-600">
-            No users found matching your search.
-        </div>
-        {% endif %}
+{% block title %}Find Users - Antici{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <h1 class="text-2xl font-bold mb-6">Search Users</h1>
+    
+    <!-- Search Form -->
+    <div class="bg-white p-6 rounded-lg shadow-md mb-6">
+        <form method="GET" action="/search_users" class="flex gap-4">
+            <input type="text" name="query" value="{{ query or '' }}" 
+                   placeholder="Search by username..." 
+                   class="flex-1 p-2 border rounded">
+            <button type="submit" 
+                    class="bg-green-600 text-white px-6 py-2 rounded hover:bg-green-700">
+                Search
+            </button>
+        </form>
     </div>
-</body>
-</html>
+
+    <!-- Search Results -->
+    {% if users %}
+    <div class="bg-white p-6 rounded-lg shadow-md">
+        <h2 class="text-xl font-semibold mb-4">Results</h2>
+        <div class="space-y-4">
+            {% for user in users %}
+            <div class="flex items-center justify-between border-b pb-4">
+                <div>
+                    <span class="font-medium">{{ user.username }}</span>
+                </div>
+                <div>
+                    {% if user.follow_status == 'none' %}
+                        <form action="/follow/{{ user.id }}" method="POST" class="inline">
+                            <button type="submit" 
+                                    class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
+                                Follow
+                            </button>
+                        </form>
+                    {% elif user.follow_status == 'pending' %}
+                        <span class="text-yellow-600">Request Pending</span>
+                    {% elif user.follow_status == 'following' %}
+                        <form action="/unfollow/{{ user.id }}" method="POST" class="inline">
+                            <button type="submit" 
+                                    class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">
+                                Unfollow
+                            </button>
+                        </form>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% elif query %}
+    <div class="bg-white p-6 rounded-lg shadow-md text-center text-gray-600">
+        No users found matching your search.
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

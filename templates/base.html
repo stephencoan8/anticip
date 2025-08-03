@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en" class="light-theme">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Antici - Spotify Stock Trading{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --bg-primary: #f3f4f6;
+            --bg-secondary: #ffffff;
+            --bg-tertiary: #f9fafb;
+            --text-primary: #111827;
+            --text-secondary: #6b7280;
+            --text-tertiary: #9ca3af;
+            --border-color: #e5e7eb;
+            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
+        }
+
+        .dark-theme {
+            --bg-primary: #111827;
+            --bg-secondary: #1f2937;
+            --bg-tertiary: #374151;
+            --text-primary: #f9fafb;
+            --text-secondary: #d1d5db;
+            --text-tertiary: #9ca3af;
+            --border-color: #374151;
+            --shadow: 0 1px 3px 0 rgb(0 0 0 / 0.3), 0 1px 2px -1px rgb(0 0 0 / 0.3);
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        .themed-bg {
+            background-color: var(--bg-secondary);
+        }
+
+        .themed-bg-tertiary {
+            background-color: var(--bg-tertiary);
+        }
+
+        .themed-text {
+            color: var(--text-primary);
+        }
+
+        .themed-text-secondary {
+            color: var(--text-secondary);
+        }
+
+        .themed-text-tertiary {
+            color: var(--text-tertiary);
+        }
+
+        .themed-border {
+            border-color: var(--border-color);
+        }
+
+        .themed-shadow {
+            box-shadow: var(--shadow);
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="min-h-screen transition-colors duration-300"
+      style="background-color: var(--bg-primary); color: var(--text-primary);"
+      data-theme="light">
+    <div class="flex">
+        <!-- Left Sidebar -->
+        <div class="w-64 themed-bg themed-shadow min-h-screen fixed left-0 top-0 z-10 transition-colors duration-300">
+            <div class="p-6">
+                <h1 class="text-2xl font-bold text-green-600 mb-8">Antici</h1>
+                
+                <!-- Main Navigation -->
+                <nav class="space-y-2">
+                    <h3 class="text-xs font-semibold themed-text-tertiary uppercase tracking-wider mb-3">Trading</h3>
+                    <a href="/artists" class="flex items-center px-3 py-2 themed-text rounded-lg hover:bg-green-50 hover:text-green-700 transition-colors {% if request.endpoint == 'list_artists' %}bg-green-100 text-green-700{% endif %}">>
+                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l6 6v7M12 6V4a2 2 0 012-2h4a2 2 0 012 2v2M6 20h12a2 2 0 002-2v-2M6 20a2 2 0 01-2-2v-2m2 4V4a2 2 0 012-2h12"></path>
+                        </svg>
+                        Artists
+                    </a>
+                    <a href="/portfolio" class="flex items-center px-3 py-2 text-gray-700 rounded-lg hover:bg-green-50 hover:text-green-700 transition-colors {% if request.endpoint == 'portfolio' %}bg-green-100 text-green-700{% endif %}">
+                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                        My Portfolio
+                    </a>
+                    <a href="/add_artist" class="flex items-center px-3 py-2 text-gray-700 rounded-lg hover:bg-green-50 hover:text-green-700 transition-colors {% if request.endpoint == 'add_artist' %}bg-green-100 text-green-700{% endif %}">
+                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6"></path>
+                        </svg>
+                        Add Artist
+                    </a>
+                    
+                    <!-- Social Navigation -->
+                    <h3 class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3 mt-6">Social</h3>
+                    <a href="/followers" class="flex items-center px-3 py-2 text-gray-700 rounded-lg hover:bg-green-50 hover:text-green-700 transition-colors {% if request.endpoint == 'followers' %}bg-green-100 text-green-700{% endif %}">
+                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path>
+                        </svg>
+                        Followers
+                    </a>
+                    <a href="/following" class="flex items-center px-3 py-2 text-gray-700 rounded-lg hover:bg-green-50 hover:text-green-700 transition-colors {% if request.endpoint == 'following' %}bg-green-100 text-green-700{% endif %}">
+                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
+                        </svg>
+                        Following
+                    </a>
+                    <a href="/search_users" class="flex items-center px-3 py-2 text-gray-700 rounded-lg hover:bg-green-50 hover:text-green-700 transition-colors {% if request.endpoint == 'search_users' %}bg-green-100 text-green-700{% endif %}">
+                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"></path>
+                        </svg>
+                        Find Users
+                    </a>
+                    <a href="/pending_requests" class="flex items-center px-3 py-2 text-gray-700 rounded-lg hover:bg-green-50 hover:text-green-700 transition-colors {% if request.endpoint == 'pending_requests' %}bg-green-100 text-green-700{% endif %}">
+                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 17h5l-5 5-5-5h5v-5a7.5 7.5 0 01-15 0v-5h5l-5-5 5-5h-5v5a7.5 7.5 0 0115 0v5z"></path>
+                        </svg>
+                        Requests
+                    </a>
+                </nav>
+                
+                <!-- User Section -->
+                <div class="border-t pt-6 mt-8">
+                    <div class="flex items-center px-3 py-2">
+                        <div class="w-8 h-8 bg-green-500 rounded-full flex items-center justify-center">
+                            <span class="text-white font-semibold text-sm">
+                                {% if session.username %}{{ session.username[0]|upper }}{% else %}U{% endif %}
+                            </span>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm font-medium text-gray-700">
+                                {% if session.username %}{{ session.username }}{% else %}User{% endif %}
+                            </p>
+                        </div>
+                    </div>
+                    <a href="/settings" class="flex items-center px-3 py-2 mt-2 text-gray-700 rounded-lg hover:bg-gray-50 hover:text-gray-900 transition-colors {% if request.endpoint == 'settings' %}bg-green-100 text-green-700{% endif %}">
+                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                        </svg>
+                        Settings
+                    </a>
+                    <a href="/logout" class="flex items-center px-3 py-2 mt-2 text-gray-700 rounded-lg hover:bg-red-50 hover:text-red-700 transition-colors">
+                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                        </svg>
+                        Logout
+                    </a>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="flex-1 ml-64">
+            <div class="p-6">
+                {% block content %}{% endblock %}
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Theme management
+        function initTheme() {
+            const savedTheme = localStorage.getItem('theme') || 'light';
+            const html = document.documentElement;
+            const body = document.body;
+            
+            if (savedTheme === 'dark') {
+                html.classList.remove('light-theme');
+                html.classList.add('dark-theme');
+                body.setAttribute('data-theme', 'dark');
+            } else {
+                html.classList.remove('dark-theme');
+                html.classList.add('light-theme');
+                body.setAttribute('data-theme', 'light');
+            }
+            
+            // Update toggle if on settings page
+            const darkModeToggle = document.getElementById('darkModeToggle');
+            if (darkModeToggle) {
+                darkModeToggle.checked = savedTheme === 'dark';
+            }
+        }
+        
+        function toggleTheme() {
+            const html = document.documentElement;
+            const body = document.body;
+            const currentTheme = body.getAttribute('data-theme');
+            const newTheme = currentTheme === 'light' ? 'dark' : 'light';
+            
+            if (newTheme === 'dark') {
+                html.classList.remove('light-theme');
+                html.classList.add('dark-theme');
+                body.setAttribute('data-theme', 'dark');
+            } else {
+                html.classList.remove('dark-theme');
+                html.classList.add('light-theme');
+                body.setAttribute('data-theme', 'light');
+            }
+            
+            localStorage.setItem('theme', newTheme);
+        }
+        
+        // Initialize theme on page load
+        document.addEventListener('DOMContentLoaded', initTheme);
+    </script>
+    
+    {% block extra_scripts %}{% endblock %}
+</body>
+</html>
