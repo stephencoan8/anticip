@@ -1,0 +1,1105 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid px-0">
+    <div class="row justify-content-center">
+        <div class="col-12 col-md-8 col-lg-6 col-xl-5">
+            <!-- Feed Header -->
+            <div class="feed-header">
+                <div class="d-flex justify-content-between align-items-center mb-4 px-3">
+                    <h2 class="feed-title"><i class="fas fa-rss"></i> Activity Feed</h2>
+                </div>
+
+                <!-- View Toggle Buttons -->
+                <div class="feed-nav-container px-3 mb-4">
+                    <div class="feed-nav-buttons">
+                        <a href="/feed?view=followers" class="feed-nav-btn {{ 'active' if view_mode == 'followers' else '' }}">
+                            <i class="fas fa-users"></i>
+                            <span>Following</span>
+                        </a>
+                        <a href="/feed?view=public" class="feed-nav-btn {{ 'active' if view_mode == 'public' else '' }}">
+                            <i class="fas fa-globe"></i>
+                            <span>Public</span>
+                        </a>
+                        <a href="/feed?view=self" class="feed-nav-btn {{ 'active' if view_mode == 'self' else '' }}">
+                            <i class="fas fa-user"></i>
+                            <span>My Trades</span>
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Feed Content -->
+            {% if transactions %}
+                <div class="feed-container">
+                    {% for transaction in transactions %}
+                    <div class="transaction-post" data-transaction-id="{{ transaction[0] }}">
+                        <!-- Post Header -->
+                        <div class="post-header">
+                            <div class="user-info">
+                                <div class="user-avatar">
+                                    <i class="fas fa-user-circle"></i>
+                                </div>
+                                <div class="user-details">
+                                    <div class="username">{{ transaction[7] }}</div>
+                                    <div class="post-time">{{ transaction[6].strftime('%m/%d/%y • %H:%M') }}</div>
+                                </div>
+                            </div>
+                            <div class="post-badges">
+                                <span class="trade-badge {{ 'buy-badge' if transaction[1] == 'buy' else 'sell-badge' }}">
+                                    <i class="fas fa-{{ 'arrow-up' if transaction[1] == 'buy' else 'arrow-down' }}"></i>
+                                    {{ transaction[1].upper() }}
+                                </span>
+                                {% if view_mode == 'self' %}
+                                    <span class="privacy-badge">
+                                        <i class="fas fa-{{ 'lock' if transaction[14] == 'private' else 'users' if transaction[14] == 'followers' else 'globe' }}"></i>
+                                    </span>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <!-- Large Artist Image with Overlay Info -->
+                        <div class="artist-showcase">
+                            {% if transaction[9] %}
+                                <img src="{{ transaction[9] }}" alt="{{ transaction[8] }}" class="artist-image">
+                            {% else %}
+                                <div class="artist-placeholder">
+                                    <i class="fas fa-music"></i>
+                                </div>
+                            {% endif %}
+                            
+                            <!-- Artist Name Overlay -->
+                            <div class="artist-overlay">
+                                <h3 class="artist-name">{{ transaction[8] }}</h3>
+                            </div>
+                        </div>
+
+                        <!-- Transaction Details -->
+                        <div class="transaction-details">
+                            <div class="trade-summary">
+                                <div class="summary-item shares">
+                                    <div class="summary-value">{{ "{:,}".format(transaction[2]) }}</div>
+                                    <div class="summary-label">Shares</div>
+                                </div>
+                                <div class="summary-item price">
+                                    <div class="summary-value">${{ "%.2f"|format(transaction[3]) }}</div>
+                                    <div class="summary-label">Per Share</div>
+                                </div>
+                                <div class="summary-item total">
+                                    <div class="summary-value">${{ "{:,.2f}".format(transaction[4]) }}</div>
+                                    <div class="summary-label">Total {{ transaction[1].title() }}</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Caption -->
+                        {% if transaction[5] %}
+                        <div class="post-caption">
+                            <p>{{ transaction[5] }}</p>
+                        </div>
+                        {% endif %}
+
+                        <!-- Action Bar -->
+                        <div class="action-bar">
+                            <div class="action-buttons">
+                                <button class="action-btn like-btn {{ 'active' if transaction[13] > 0 else '' }}" 
+                                        data-transaction-id="{{ transaction[0] }}"
+                                        data-liked="{{ 'true' if transaction[13] > 0 else 'false' }}">
+                                    <i class="fas fa-heart" style="{{ 'color: #e11d48;' if transaction[13] > 0 else '' }}"></i>
+                                    <span class="action-text" style="{{ 'color: #e11d48;' if transaction[13] > 0 else '' }}">Like</span>
+                                    <span class="action-count">{{ transaction[11] if transaction[11] > 0 else '' }}</span>
+                                </button>
+                                
+                                <button class="action-btn comment-btn {{ 'active' if transaction[15] > 0 else '' }}" 
+                                        data-transaction-id="{{ transaction[0] }}">
+                                    <i class="fas fa-comment" style="{{ 'color: #3b82f6;' if transaction[15] > 0 else '' }}"></i>
+                                    <span class="action-text" style="{{ 'color: #3b82f6;' if transaction[15] > 0 else '' }}">Comment</span>
+                                    <span class="action-count">{{ transaction[12] if transaction[12] > 0 else '' }}</span>
+                                </button>
+                            </div>
+                            
+                            <div class="trade-time">
+                                {{ transaction[6].strftime('%H:%M') }}
+                            </div>
+                        </div>
+
+                        <!-- Comments Section -->
+                        <div class="comments-section" id="comments-{{ transaction[0] }}" style="display: none;">
+                            <div class="comments-container">
+                                <div class="comments-list"></div>
+                                <div class="comment-form">
+                                    <div class="comment-input-group">
+                                        <input type="text" class="comment-input" 
+                                               placeholder="Add a comment..." 
+                                               data-transaction-id="{{ transaction[0] }}">
+                                        <button class="post-comment-btn" 
+                                                data-transaction-id="{{ transaction[0] }}">
+                                            <i class="fas fa-paper-plane"></i>
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty-feed">
+                    <div class="empty-icon">
+                        <i class="fas fa-rss"></i>
+                    </div>
+                    {% if view_mode == 'public' %}
+                        <h4>No Public Activity</h4>
+                        <p>No public transactions have been made yet. Be the first to share your trades!</p>
+                        <a href="/artists" class="btn btn-primary">Start Trading</a>
+                    {% elif view_mode == 'self' %}
+                        <h4>No Trading Activity</h4>
+                        <p>You haven't made any trades yet. Start building your portfolio!</p>
+                        <a href="/artists" class="btn btn-primary">Browse Artists</a>
+                    {% else %}
+                        <h4>No Activity Yet</h4>
+                        <p>Follow some users to see their trading activity here!</p>
+                        <a href="/social" class="btn btn-primary">Find Users to Follow</a>
+                    {% endif %}
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<style>
+/* Feed Header */
+.feed-header {
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-color);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    background: rgba(var(--bg-secondary-rgb, 255, 255, 255), 0.9);
+}
+
+.dark-theme .feed-header {
+    background: rgba(31, 41, 55, 0.9);
+}
+
+.feed-title {
+    font-size: 24px;
+    font-weight: 700;
+    color: var(--text-primary);
+    margin: 0;
+}
+
+.feed-title i {
+    color: #3b82f6;
+    margin-right: 8px;
+}
+
+/* Navigation Buttons */
+.feed-nav-container {
+    padding-bottom: 16px;
+}
+
+.feed-nav-buttons {
+    display: flex;
+    background: var(--bg-tertiary);
+    border-radius: 16px;
+    padding: 6px;
+    gap: 4px;
+    border: 1px solid var(--border-color);
+}
+
+.feed-nav-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 12px 16px;
+    border-radius: 12px;
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 14px;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    color: var(--text-secondary);
+    background: transparent;
+    border: none;
+}
+
+.feed-nav-btn:hover {
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+    text-decoration: none;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.feed-nav-btn.active {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: white;
+    box-shadow: 0 4px 16px rgba(59, 130, 246, 0.4);
+}
+
+.feed-nav-btn.active:hover {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    color: white;
+    transform: translateY(-1px);
+}
+
+.feed-nav-btn i {
+    font-size: 16px;
+}
+
+/* Feed Container */
+.feed-container {
+    padding: 0 16px;
+}
+
+/* Transaction Post */
+.transaction-post {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    margin-bottom: 24px;
+    overflow: hidden;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.transaction-post:hover {
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+    transform: translateY(-2px);
+}
+
+/* Post Header */
+.post-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+.user-info {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.user-avatar i {
+    font-size: 36px;
+    color: var(--text-tertiary);
+}
+
+.username {
+    font-weight: 700;
+    font-size: 16px;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+}
+
+.post-time {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    font-weight: 500;
+}
+
+.post-badges {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.trade-badge {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.buy-badge {
+    background: linear-gradient(135deg, #10b981, #059669);
+    color: white;
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);
+}
+
+.sell-badge {
+    background: linear-gradient(135deg, #ef4444, #dc2626);
+    color: white;
+    box-shadow: 0 4px 12px rgba(239, 68, 68, 0.3);
+}
+
+.privacy-badge {
+    background: var(--text-tertiary);
+    color: white;
+    padding: 6px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+}
+
+/* Artist Showcase */
+.artist-showcase {
+    position: relative;
+    width: 100%;
+    height: 500px;
+    overflow: hidden;
+}
+
+.artist-image {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center;
+    transition: transform 0.3s ease;
+}
+
+.transaction-post:hover .artist-image {
+    transform: scale(1.02);
+}
+
+.artist-placeholder {
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, var(--bg-tertiary), var(--border-color));
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-tertiary);
+    font-size: 80px;
+}
+
+.artist-overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: linear-gradient(transparent, rgba(0, 0, 0, 0.8));
+    padding: 40px 24px 24px;
+}
+
+.artist-name {
+    font-size: 32px;
+    font-weight: 900;
+    color: white;
+    text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
+    line-height: 1.1;
+    margin: 0;
+}
+
+/* Transaction Details */
+.transaction-details {
+    padding: 24px 20px;
+}
+
+.trade-summary {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+}
+
+.summary-item {
+    text-align: center;
+    padding: 16px;
+    background: var(--bg-tertiary);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.summary-value {
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--text-primary);
+    line-height: 1;
+    margin-bottom: 4px;
+}
+
+.summary-label {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.summary-item.shares .summary-value {
+    color: #3b82f6;
+}
+
+.summary-item.price .summary-value {
+    color: #8b5cf6;
+}
+
+.summary-item.total .summary-value {
+    color: #10b981;
+}
+
+/* Post Caption */
+.post-caption {
+    padding: 0 20px 20px;
+}
+
+.post-caption p {
+    background: var(--bg-tertiary);
+    padding: 16px 20px;
+    border-radius: 12px;
+    border-left: 4px solid #3b82f6;
+    margin: 0;
+    font-size: 15px;
+    color: var(--text-primary);
+    line-height: 1.5;
+}
+
+/* Action Bar */
+.action-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-tertiary);
+}
+
+.action-buttons {
+    display: flex;
+    gap: 24px;
+}
+
+.action-btn {
+    background: none;
+    border: none;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    border-radius: 20px;
+    transition: all 0.2s ease;
+    font-size: 20px;
+    color: var(--text-tertiary);
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.action-btn:hover {
+    background: rgba(59, 130, 246, 0.1);
+    transform: scale(1.05);
+}
+
+.action-btn.active i {
+    color: inherit;
+}
+
+.action-btn.like-btn.active i {
+    color: #e11d48 !important;
+}
+
+.action-btn.like-btn.active .action-text {
+    color: #e11d48 !important;
+}
+
+.action-btn.comment-btn.active i {
+    color: #3b82f6 !important;
+}
+
+.action-btn.comment-btn.active .action-text {
+    color: #3b82f6 !important;
+}
+
+.action-btn.like-btn:hover i {
+    color: #e11d48;
+}
+
+.action-btn.like-btn:hover .action-text {
+    color: #e11d48;
+}
+
+.action-btn.comment-btn:hover i {
+    color: #3b82f6;
+}
+
+.action-btn.comment-btn:hover .action-text {
+    color: #3b82f6;
+}
+
+.action-text {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.action-count {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-primary);
+    background: var(--bg-secondary);
+    padding: 4px 8px;
+    border-radius: 12px;
+    min-width: 24px;
+    text-align: center;
+}
+
+.trade-time {
+    font-size: 12px;
+    color: var(--text-tertiary);
+    font-weight: 600;
+}
+
+/* Comments Section */
+.comments-section {
+    border-top: 1px solid var(--border-color);
+    background: var(--bg-primary);
+    animation: slideDown 0.3s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        max-height: 0;
+    }
+    to {
+        opacity: 1;
+        max-height: 400px;
+    }
+}
+
+.comments-container {
+    padding: 20px;
+}
+
+.comments-list {
+    margin-bottom: 16px;
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.comment-item {
+    background: var(--bg-secondary);
+    padding: 12px 16px;
+    border-radius: 12px;
+    margin-bottom: 12px;
+    border: 1px solid var(--border-color);
+}
+
+.comment-item:last-child {
+    margin-bottom: 0;
+}
+
+.comment-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.comment-header strong {
+    color: var(--text-primary);
+    font-weight: 700;
+    font-size: 14px;
+}
+
+.comment-time {
+    color: var(--text-tertiary);
+    font-size: 11px;
+    font-weight: 500;
+}
+
+.comment-text {
+    color: var(--text-secondary);
+    line-height: 1.4;
+    font-size: 14px;
+}
+
+.no-comments {
+    text-align: center;
+    color: var(--text-tertiary);
+    font-style: italic;
+    padding: 32px;
+    font-size: 15px;
+}
+
+.comment-input-group {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.comment-input {
+    flex: 1;
+    padding: 12px 16px;
+    border: 2px solid var(--border-color);
+    border-radius: 20px;
+    font-size: 14px;
+    outline: none;
+    transition: all 0.2s ease;
+    background: var(--bg-secondary);
+    color: var(--text-primary);
+}
+
+.comment-input:focus {
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.comment-input::placeholder {
+    color: var(--text-tertiary);
+}
+
+.post-comment-btn {
+    background: linear-gradient(135deg, #3b82f6, #2563eb);
+    color: white;
+    border: none;
+    padding: 12px;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+}
+
+.post-comment-btn:hover {
+    background: linear-gradient(135deg, #2563eb, #1d4ed8);
+    transform: scale(1.05);
+    box-shadow: 0 6px 16px rgba(59, 130, 246, 0.4);
+}
+
+.post-comment-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+    transform: none;
+}
+
+/* Empty Feed */
+.empty-feed {
+    text-align: center;
+    padding: 80px 20px;
+    color: var(--text-secondary);
+}
+
+.empty-icon {
+    font-size: 64px;
+    color: var(--text-tertiary);
+    margin-bottom: 24px;
+}
+
+.empty-feed h4 {
+    color: var(--text-primary);
+    font-weight: 700;
+    margin-bottom: 12px;
+}
+
+.empty-feed p {
+    color: var(--text-secondary);
+    margin-bottom: 24px;
+    font-size: 16px;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+    .feed-container {
+        padding: 0 8px;
+    }
+    
+    .transaction-post {
+        margin-bottom: 16px;
+        border-radius: 12px;
+    }
+    
+    .post-header {
+        padding: 12px 16px;
+    }
+    
+    .artist-showcase {
+        height: 400px;
+    }
+    
+    .artist-name {
+        font-size: 24px;
+    }
+    
+    .artist-overlay {
+        padding: 24px 16px 16px;
+    }
+    
+    .transaction-details {
+        padding: 16px;
+    }
+    
+    .trade-summary {
+        gap: 12px;
+    }
+    
+    .summary-item {
+        padding: 12px 8px;
+    }
+    
+    .summary-value {
+        font-size: 16px;
+    }
+    
+    .action-bar {
+        padding: 12px 16px;
+    }
+    
+    .action-buttons {
+        gap: 16px;
+    }
+    
+    .action-btn {
+        font-size: 18px;
+        padding: 6px 12px;
+    }
+    
+    .comments-container {
+        padding: 16px;
+    }
+}
+
+@media (max-width: 480px) {
+    .feed-nav-buttons {
+        flex-direction: column;
+        gap: 6px;
+    }
+    
+    .feed-nav-btn {
+        padding: 10px 12px;
+    }
+    
+    .trade-summary {
+        grid-template-columns: 1fr;
+        gap: 12px;
+    }
+    
+    .summary-item {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        text-align: left;
+    }
+    
+    .summary-label {
+        margin-bottom: 0;
+    }
+    
+    .artist-showcase {
+        height: 300px;
+    }
+    
+    .artist-name {
+        font-size: 20px;
+    }
+}
+
+/* Loading Animation */
+.transaction-post {
+    opacity: 0;
+    transform: translateY(20px);
+    animation: fadeInUp 0.6s ease forwards;
+}
+
+@keyframes fadeInUp {
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* Heart Animation */
+@keyframes heartBeat {
+    0% { transform: scale(1); }
+    25% { transform: scale(1.2); }
+    50% { transform: scale(1.1); }
+    75% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+}
+
+.action-btn.like-btn.active i {
+    animation: heartBeat 0.6s ease;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Like functionality
+    document.querySelectorAll('.like-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const transactionId = this.dataset.transactionId;
+            const isLiked = this.dataset.liked === 'true';
+            const heart = this.querySelector('i');
+            const actionText = this.querySelector('.action-text');
+            const countSpan = this.querySelector('.action-count');
+            
+            // Optimistic UI update
+            if (isLiked) {
+                this.classList.remove('active');
+                heart.style.color = '';
+                actionText.style.color = '';
+            } else {
+                this.classList.add('active');
+                heart.style.color = '#e11d48';
+                actionText.style.color = '#e11d48';
+            }
+            
+            fetch(`/like_transaction/${transactionId}`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    this.dataset.liked = data.liked.toString();
+                    
+                    // Update count
+                    if (data.like_count > 0) {
+                        if (!countSpan) {
+                            const newCountSpan = document.createElement('span');
+                            newCountSpan.className = 'action-count';
+                            this.appendChild(newCountSpan);
+                        }
+                        (countSpan || this.querySelector('.action-count')).textContent = data.like_count;
+                    } else if (countSpan) {
+                        countSpan.textContent = '';
+                    }
+                    
+                    // Update UI state
+                    if (data.liked) {
+                        this.classList.add('active');
+                        heart.style.color = '#e11d48';
+                        actionText.style.color = '#e11d48';
+                    } else {
+                        this.classList.remove('active');
+                        heart.style.color = '';
+                        actionText.style.color = '';
+                    }
+                } else {
+                    // Revert optimistic update on error
+                    if (!isLiked) {
+                        this.classList.remove('active');
+                        heart.style.color = '';
+                        actionText.style.color = '';
+                    } else {
+                        this.classList.add('active');
+                        heart.style.color = '#e11d48';
+                        actionText.style.color = '#e11d48';
+                    }
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                // Revert optimistic update on error
+                if (!isLiked) {
+                    this.classList.remove('active');
+                    heart.style.color = '';
+                    actionText.style.color = '';
+                } else {
+                    this.classList.add('active');
+                    heart.style.color = '#e11d48';
+                    actionText.style.color = '#e11d48';
+                }
+            });
+        });
+    });
+
+    // Comment toggle functionality
+    document.querySelectorAll('.comment-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const transactionId = this.dataset.transactionId;
+            const commentsSection = document.getElementById(`comments-${transactionId}`);
+            const post = this.closest('.transaction-post');
+            
+            if (commentsSection.style.display === 'none' || !commentsSection.style.display) {
+                // Open comments
+                commentsSection.style.display = 'block';
+                post.style.boxShadow = '0 12px 48px rgba(59, 130, 246, 0.15)';
+                post.style.borderColor = '#3b82f6';
+                loadComments(transactionId);
+                
+                // Smooth scroll to comments
+                setTimeout(() => {
+                    commentsSection.scrollIntoView({ 
+                        behavior: 'smooth', 
+                        block: 'nearest' 
+                    });
+                }, 100);
+                
+                // Focus on input
+                const input = commentsSection.querySelector('.comment-input');
+                setTimeout(() => input.focus(), 300);
+            } else {
+                // Close comments
+                commentsSection.style.display = 'none';
+                post.style.boxShadow = '';
+                post.style.borderColor = '';
+            }
+        });
+    });
+
+    // Post comment functionality
+    document.querySelectorAll('.post-comment-btn').forEach(btn => {
+        btn.addEventListener('click', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const transactionId = this.dataset.transactionId;
+            const input = document.querySelector(`.comment-input[data-transaction-id="${transactionId}"]`);
+            const comment = input.value.trim();
+            
+            if (!comment) return;
+            
+            // Disable button during request
+            this.disabled = true;
+            this.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            
+            const formData = new FormData();
+            formData.append('comment', comment);
+            
+            fetch(`/comment_transaction/${transactionId}`, {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    input.value = '';
+                    loadComments(transactionId);
+                    
+                    // Update comment count
+                    const commentBtn = document.querySelector(`.comment-btn[data-transaction-id="${transactionId}"]`);
+                    let countSpan = commentBtn.querySelector('.action-count');
+                    
+                    if (data.comment_count > 0) {
+                        if (!countSpan) {
+                            countSpan = document.createElement('span');
+                            countSpan.className = 'action-count';
+                            commentBtn.appendChild(countSpan);
+                        }
+                        countSpan.textContent = data.comment_count;
+                        commentBtn.classList.add('active');
+                        commentBtn.querySelector('i').style.color = '#3b82f6';
+                        commentBtn.querySelector('.action-text').style.color = '#3b82f6';
+                    } else if (countSpan) {
+                        countSpan.textContent = '';
+                    }
+                }
+            })
+            .catch(error => console.error('Error:', error))
+            .finally(() => {
+                // Re-enable button
+                this.disabled = false;
+                this.innerHTML = '<i class="fas fa-paper-plane"></i>';
+            });
+        });
+    });
+
+    // Load comments function
+    function loadComments(transactionId) {
+        const commentsList = document.querySelector(`#comments-${transactionId} .comments-list`);
+        
+        fetch(`/get_comments/${transactionId}`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                commentsList.innerHTML = '';
+                
+                if (data.comments.length === 0) {
+                    commentsList.innerHTML = '<div class="no-comments">Be the first to comment!</div>';
+                } else {
+                    data.comments.forEach(comment => {
+                        const commentDiv = document.createElement('div');
+                        commentDiv.className = 'comment-item';
+                        commentDiv.innerHTML = `
+                            <div class="comment-header">
+                                <strong>${comment.username}</strong>
+                                <small class="comment-time">${comment.created_at}</small>
+                            </div>
+                            <div class="comment-text">${comment.comment}</div>
+                        `;
+                        commentsList.appendChild(commentDiv);
+                    });
+                }
+            }
+        })
+        .catch(error => console.error('Error:', error));
+    }
+
+    // Enter key support for comment input
+    document.querySelectorAll('.comment-input').forEach(input => {
+        input.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter' && !e.shiftKey) {
+                e.preventDefault();
+                const transactionId = this.dataset.transactionId;
+                document.querySelector(`.post-comment-btn[data-transaction-id="${transactionId}"]`).click();
+            }
+        });
+    });
+
+    // Close comments when clicking outside
+    document.addEventListener('click', function(e) {
+        if (!e.target.closest('.transaction-post')) {
+            return;
+        }
+        
+        // If clicking inside a post but not on comment-related elements
+        if (!e.target.closest('.comments-section') && !e.target.closest('.comment-btn')) {
+            const clickedPost = e.target.closest('.transaction-post');
+            if (clickedPost) {
+                const commentsSection = clickedPost.querySelector('.comments-section');
+                if (commentsSection && commentsSection.style.display === 'block') {
+                    commentsSection.style.display = 'none';
+                    clickedPost.style.boxShadow = '';
+                    clickedPost.style.borderColor = '';
+                }
+            }
+        }
+    });
+
+    // Prevent comment section from closing when clicking inside it
+    document.querySelectorAll('.comments-section').forEach(section => {
+        section.addEventListener('click', function(e) {
+            e.stopPropagation();
+        });
+    });
+
+    // Staggered loading animation for posts
+    const posts = document.querySelectorAll('.transaction-post');
+    posts.forEach((post, index) => {
+        post.style.animationDelay = `${index * 0.1}s`;
+    });
+
+    // Intersection Observer for smooth loading
+    const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+            if (entry.isIntersecting) {
+                entry.target.style.opacity = '1';
+                entry.target.style.transform = 'translateY(0)';
+            }
+        });
+    }, {
+        threshold: 0.1,
+        rootMargin: '50px'
+    });
+
+    // Observe all posts for smooth loading
+    posts.forEach(post => {
+        observer.observe(post);
+    });
+});
+</script>
+{% endblock %}

@@ -73,6 +73,32 @@ try:
             external_urls JSONB DEFAULT '{}',
             last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
+        CREATE TABLE IF NOT EXISTS transactions (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER REFERENCES users(id),
+            artist_id INTEGER REFERENCES artists(id),
+            transaction_type VARCHAR(4) CHECK (transaction_type IN ('buy', 'sell')),
+            shares INTEGER NOT NULL,
+            price_per_share NUMERIC(10, 2) NOT NULL,
+            total_amount NUMERIC(12, 2) NOT NULL,
+            caption TEXT,
+            privacy VARCHAR(10) DEFAULT 'public' CHECK (privacy IN ('public', 'followers', 'private')),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS transaction_likes (
+            id SERIAL PRIMARY KEY,
+            transaction_id INTEGER REFERENCES transactions(id) ON DELETE CASCADE,
+            user_id INTEGER REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            CONSTRAINT unique_transaction_like UNIQUE(transaction_id, user_id)
+        );
+        CREATE TABLE IF NOT EXISTS transaction_comments (
+            id SERIAL PRIMARY KEY,
+            transaction_id INTEGER REFERENCES transactions(id) ON DELETE CASCADE,
+            user_id INTEGER REFERENCES users(id),
+            comment TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
     """)
     conn.commit()
 except Exception as e:
@@ -381,8 +407,14 @@ def buy_artist(spotify_id):
         return redirect(url_for('login'))
     user_id = session['user_id']
     shares = int(request.form.get('shares', 0))
+    caption = request.form.get('caption', '').strip()
+    privacy = request.form.get('privacy', 'public')
+    
     if shares <= 0:
         return "Invalid share amount", 400
+    if privacy not in ['public', 'followers', 'private']:
+        privacy = 'public'
+        
     conn = db_pool.getconn()
     try:
         cursor = conn.cursor()
@@ -391,20 +423,24 @@ def buy_artist(spotify_id):
         if not artist_row:
             return "Artist not found", 404
         artist_id = artist_row[0]
+        
         cursor.execute("SELECT price FROM artist_history WHERE spotify_id = %s ORDER BY recorded_at DESC LIMIT 1", (spotify_id,))
         price_row = cursor.fetchone()
         if not price_row:
             return "No price data", 400
         price = float(price_row[0])
         total_cost = shares * price
+        
         # Check user balance
         cursor.execute("SELECT balance FROM users WHERE id = %s", (user_id,))
         balance_row = cursor.fetchone()
         balance = float(balance_row[0]) if balance_row else 0.0
         if balance < total_cost:
             return "Insufficient funds", 400
+            
         # Deduct balance
         cursor.execute("UPDATE users SET balance = balance - %s WHERE id = %s", (total_cost, user_id))
+        
         # Check if user already owns shares
         cursor.execute("SELECT id, shares, avg_price FROM bets WHERE user_id = %s AND artist_id = %s", (user_id, artist_id))
         bet = cursor.fetchone()
@@ -415,6 +451,13 @@ def buy_artist(spotify_id):
             cursor.execute("UPDATE bets SET shares = %s, avg_price = %s, timestamp = NOW() WHERE id = %s", (total_shares, new_avg, bet_id))
         else:
             cursor.execute("INSERT INTO bets (user_id, artist_id, shares, avg_price) VALUES (%s, %s, %s, %s)", (user_id, artist_id, shares, price))
+        
+        # Record the transaction
+        cursor.execute("""
+            INSERT INTO transactions (user_id, artist_id, transaction_type, shares, price_per_share, total_value, caption, visibility)
+            VALUES (%s, %s, 'buy', %s, %s, %s, %s, %s)
+        """, (user_id, artist_id, shares, price, total_cost, caption, privacy))
+        
         conn.commit()
         return redirect(url_for('artist_detail', spotify_id=spotify_id))
     except Exception as e:
@@ -430,8 +473,14 @@ def sell_artist(spotify_id):
         return redirect(url_for('login'))
     user_id = session['user_id']
     shares = int(request.form.get('shares', 0))
+    caption = request.form.get('caption', '').strip()
+    privacy = request.form.get('privacy', 'public')
+    
     if shares <= 0:
         return "Invalid share amount", 400
+    if privacy not in ['public', 'followers', 'private']:
+        privacy = 'public'
+        
     conn = db_pool.getconn()
     try:
         cursor = conn.cursor()
@@ -456,6 +505,13 @@ def sell_artist(spotify_id):
             cursor.execute("DELETE FROM bets WHERE id = %s", (bet_id,))
         # Add balance
         cursor.execute("UPDATE users SET balance = balance + %s WHERE id = %s", (total_value, user_id))
+        
+        # Record the transaction
+        cursor.execute("""
+            INSERT INTO transactions (user_id, artist_id, transaction_type, shares, price_per_share, total_value, caption, visibility)
+            VALUES (%s, %s, 'sell', %s, %s, %s, %s, %s)
+        """, (user_id, artist_id, shares, price, total_value, caption, privacy))
+        
         conn.commit()
         return redirect(url_for('artist_detail', spotify_id=spotify_id))
     except Exception as e:
@@ -977,6 +1033,206 @@ def settings():
         return render_template('settings.html', member_since=member_since)
     except Exception as e:
         return f"Database error: {str(e)}", 500
+    finally:
+        cursor.close()
+        db_pool.putconn(conn)
+
+@app.route('/feed')
+def feed():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    user_id = session['user_id']
+    view_mode = request.args.get('view', 'followers')  # followers, public, self
+    
+    conn = db_pool.getconn()
+    try:
+        cursor = conn.cursor()
+        
+        if view_mode == 'public':
+            # Show all public transactions
+            cursor.execute("""
+                SELECT t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
+                       t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id,
+                       COUNT(tl.id) as like_count,
+                       COUNT(tc.id) as comment_count,
+                       COUNT(CASE WHEN tl.user_id = %s THEN 1 END) as user_liked,
+                       t.visibility,
+                       COUNT(CASE WHEN tc.user_id = %s THEN 1 END) as user_commented
+                FROM transactions t
+                JOIN users u ON t.user_id = u.id
+                JOIN artists a ON t.artist_id = a.id
+                LEFT JOIN transaction_likes tl ON t.id = tl.transaction_id
+                LEFT JOIN transaction_comments tc ON t.id = tc.transaction_id
+                WHERE t.visibility = 'public'
+                GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
+                         t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id, t.visibility
+                ORDER BY t.created_at DESC
+                LIMIT 50
+            """, (user_id, user_id))
+        elif view_mode == 'self':
+            # Show only current user's transactions
+            cursor.execute("""
+                SELECT t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
+                       t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id,
+                       COUNT(tl.id) as like_count,
+                       COUNT(tc.id) as comment_count,
+                       COUNT(CASE WHEN tl.user_id = %s THEN 1 END) as user_liked,
+                       t.visibility,
+                       COUNT(CASE WHEN tc.user_id = %s THEN 1 END) as user_commented
+                FROM transactions t
+                JOIN users u ON t.user_id = u.id
+                JOIN artists a ON t.artist_id = a.id
+                LEFT JOIN transaction_likes tl ON t.id = tl.transaction_id
+                LEFT JOIN transaction_comments tc ON t.id = tc.transaction_id
+                WHERE t.user_id = %s
+                GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
+                         t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id, t.visibility
+                ORDER BY t.created_at DESC
+                LIMIT 50
+            """, (user_id, user_id, user_id))
+        else:  # followers
+            # Show transactions from users the current user follows + their own
+            cursor.execute("""
+                SELECT t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
+                       t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id,
+                       COUNT(tl.id) as like_count,
+                       COUNT(tc.id) as comment_count,
+                       COUNT(CASE WHEN tl.user_id = %s THEN 1 END) as user_liked,
+                       t.visibility,
+                       COUNT(CASE WHEN tc.user_id = %s THEN 1 END) as user_commented
+                FROM transactions t
+                JOIN users u ON t.user_id = u.id
+                JOIN artists a ON t.artist_id = a.id
+                LEFT JOIN transaction_likes tl ON t.id = tl.transaction_id
+                LEFT JOIN transaction_comments tc ON t.id = tc.transaction_id
+                WHERE (t.user_id = %s OR 
+                       t.user_id IN (
+                           SELECT followed_id FROM follows 
+                           WHERE follower_id = %s AND status = 'accepted'
+                       ))
+                  AND (t.visibility = 'public' OR 
+                       (t.visibility = 'followers' AND (t.user_id = %s OR t.user_id IN (
+                           SELECT followed_id FROM follows 
+                           WHERE follower_id = %s AND status = 'accepted'
+                       ))))
+                GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
+                         t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id, t.visibility
+                ORDER BY t.created_at DESC
+                LIMIT 50
+            """, (user_id, user_id, user_id, user_id, user_id, user_id))
+        
+        transactions = cursor.fetchall()
+        
+        return render_template('feed.html', transactions=transactions, view_mode=view_mode)
+    except Exception as e:
+        return f"Database error: {str(e)}", 500
+    finally:
+        cursor.close()
+        db_pool.putconn(conn)
+
+@app.route('/like_transaction/<int:transaction_id>', methods=['POST'])
+def like_transaction(transaction_id):
+    if 'user_id' not in session:
+        return {'success': False, 'error': 'Not logged in'}, 401
+    
+    user_id = session['user_id']
+    conn = db_pool.getconn()
+    try:
+        cursor = conn.cursor()
+        
+        # Check if user already liked this transaction
+        cursor.execute("SELECT id FROM transaction_likes WHERE transaction_id = %s AND user_id = %s", 
+                      (transaction_id, user_id))
+        existing_like = cursor.fetchone()
+        
+        if existing_like:
+            # Unlike
+            cursor.execute("DELETE FROM transaction_likes WHERE transaction_id = %s AND user_id = %s", 
+                          (transaction_id, user_id))
+            liked = False
+        else:
+            # Like
+            cursor.execute("INSERT INTO transaction_likes (transaction_id, user_id) VALUES (%s, %s)", 
+                          (transaction_id, user_id))
+            liked = True
+        
+        # Get updated like count
+        cursor.execute("SELECT COUNT(*) FROM transaction_likes WHERE transaction_id = %s", (transaction_id,))
+        like_count = cursor.fetchone()[0]
+        
+        conn.commit()
+        return {'success': True, 'liked': liked, 'like_count': like_count}
+    except Exception as e:
+        conn.rollback()
+        return {'success': False, 'error': str(e)}, 500
+    finally:
+        cursor.close()
+        db_pool.putconn(conn)
+
+@app.route('/comment_transaction/<int:transaction_id>', methods=['POST'])
+def comment_transaction(transaction_id):
+    if 'user_id' not in session:
+        return {'success': False, 'error': 'Not logged in'}, 401
+    
+    user_id = session['user_id']
+    comment_text = request.form.get('comment', '').strip()
+    
+    if not comment_text:
+        return {'success': False, 'error': 'Comment cannot be empty'}, 400
+    
+    conn = db_pool.getconn()
+    try:
+        cursor = conn.cursor()
+        
+        # Insert comment
+        cursor.execute("""
+            INSERT INTO transaction_comments (transaction_id, user_id, comment) 
+            VALUES (%s, %s, %s)
+        """, (transaction_id, user_id, comment_text))
+        
+        # Get updated comment count
+        cursor.execute("SELECT COUNT(*) FROM transaction_comments WHERE transaction_id = %s", (transaction_id,))
+        comment_count = cursor.fetchone()[0]
+        
+        conn.commit()
+        return {'success': True, 'comment_count': comment_count}
+    except Exception as e:
+        conn.rollback()
+        return {'success': False, 'error': str(e)}, 500
+    finally:
+        cursor.close()
+        db_pool.putconn(conn)
+
+@app.route('/get_comments/<int:transaction_id>')
+def get_comments(transaction_id):
+    if 'user_id' not in session:
+        return {'success': False, 'error': 'Not logged in'}, 401
+    
+    conn = db_pool.getconn()
+    try:
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            SELECT tc.comment, tc.created_at, u.username
+            FROM transaction_comments tc
+            JOIN users u ON tc.user_id = u.id
+            WHERE tc.transaction_id = %s
+            ORDER BY tc.created_at ASC
+        """, (transaction_id,))
+        
+        comments_data = cursor.fetchall()
+        comments = []
+        for comment in comments_data:
+            comments.append({
+                'comment': comment[0],
+                'created_at': comment[1].strftime('%m/%d/%y at %H:%M'),
+                'username': comment[2]
+            })
+        
+        return {'success': True, 'comments': comments}
+    except Exception as e:
+        return {'success': False, 'error': str(e)}, 500
     finally:
         cursor.close()
         db_pool.putconn(conn)

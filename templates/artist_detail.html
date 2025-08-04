@@ -193,7 +193,7 @@
 
 <!-- Buy/Sell Modal -->
 <div id="modalBg" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 hidden">
-    <div id="modalBox" class="themed-bg rounded-lg themed-shadow p-6 w-full max-w-sm relative transition-colors duration-300">
+    <div id="modalBox" class="themed-bg rounded-lg themed-shadow p-6 w-full max-w-md relative transition-colors duration-300">
         <button id="closeModal" class="absolute top-2 right-2 themed-text-secondary hover:themed-text text-2xl">&times;</button>
         <h3 id="modalTitle" class="text-lg font-semibold themed-text mb-4">Buy Shares</h3>
         <form id="modalForm" method="POST">
@@ -202,6 +202,21 @@
                 <input type="number" id="shares" name="shares" min="1" value="1" class="modern-input">
             </div>
             <div id="modalMath" class="themed-text-secondary text-sm mb-4"></div>
+            
+            <div class="mb-4">
+                <label for="caption" class="block text-sm font-medium themed-text mb-2">Caption (optional)</label>
+                <textarea id="caption" name="caption" rows="3" placeholder="Share your thoughts about this trade..." class="modern-input resize-none"></textarea>
+            </div>
+            
+            <div class="mb-4">
+                <label for="privacy" class="block text-sm font-medium themed-text mb-2">Privacy</label>
+                <select id="privacy" name="privacy" class="modern-dropdown">
+                    <option value="public">🌍 Public - Anyone can see</option>
+                    <option value="followers">👥 Followers - Only your followers</option>
+                    <option value="private">🔒 Private - Only you</option>
+                </select>
+            </div>
+            
             <div class="flex gap-3">
                 <button type="submit" class="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors duration-200 font-medium">Confirm</button>
                 <button type="button" id="cancelModal" class="flex-1 themed-bg-tertiary themed-text py-2 px-4 rounded-lg hover:opacity-80 transition-colors duration-200">Cancel</button>
