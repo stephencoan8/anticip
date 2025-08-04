@@ -8,71 +8,86 @@
         <h1 class="text-3xl font-bold text-green-600">{{ username }}'s Portfolio</h1>
     </div>
 
-    <div class="bg-white p-6 rounded-lg shadow-md mb-6">
-        <h2 class="text-xl font-semibold mb-4">Portfolio Summary</h2>
+    <div class="themed-bg p-6 rounded-lg themed-shadow mb-6 transition-colors duration-300">
+        <h2 class="text-xl font-semibold themed-text mb-4">Portfolio Summary</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-            <div class="bg-gray-50 p-4 rounded shadow">
-                <div class="text-gray-500">Total Net Worth</div>
-                <div class="text-2xl font-bold">${{ (net_worth or 0) | round(2) }}</div>
+            <div class="themed-bg-tertiary p-4 rounded themed-shadow transition-colors duration-300">
+                <div class="themed-text-secondary">Total Net Worth</div>
+                <div class="text-2xl font-bold themed-text">${{ (net_worth or 0) | round(2) }}</div>
             </div>
-            <div class="bg-gray-50 p-4 rounded shadow">
-                <div class="text-gray-500">Total Invested</div>
-                <div class="text-2xl font-bold">${{ (total_invested or 0) | round(2) }}</div>
+            <div class="themed-bg-tertiary p-4 rounded themed-shadow transition-colors duration-300">
+                <div class="themed-text-secondary">Total Invested</div>
+                <div class="text-2xl font-bold themed-text">${{ (total_invested or 0) | round(2) }}</div>
             </div>
-            <div class="bg-gray-50 p-4 rounded shadow">
-                <div class="text-gray-500">Overall Gain/Loss</div>
+            <div class="themed-bg-tertiary p-4 rounded themed-shadow transition-colors duration-300">
+                <div class="themed-text-secondary">Overall Gain/Loss</div>
                 <div class="text-2xl font-bold {% if (gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">${{ (gain or 0) | round(2) }}</div>
             </div>
-            <div class="bg-gray-50 p-4 rounded shadow">
-                <div class="text-gray-500">Percent Winning</div>
-                <div class="text-2xl font-bold">{{ (percent_winning or 0) | round(2) }}%</div>
+            <div class="themed-bg-tertiary p-4 rounded themed-shadow transition-colors duration-300">
+                <div class="themed-text-secondary">Percent Winning</div>
+                <div class="text-2xl font-bold themed-text">{{ (percent_winning or 0) | round(2) }}%</div>
             </div>
         </div>
     </div>
 
-    <h2 class="text-xl font-semibold mb-4">{{ username }}'s Holdings</h2>
+    <h2 class="text-xl font-semibold themed-text mb-4">{{ username }}'s Holdings</h2>
     
     {% if holdings %}
-    <div class="bg-white rounded-lg shadow-md">
-        <div class="overflow-x-auto">
-            <table class="w-full">
-                <thead class="bg-gray-50">
-                    <tr>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Artist</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Shares</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Avg. Price</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Value</th>
-                        <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Gain/Loss</th>
-                    </tr>
-                </thead>
-                <tbody class="bg-white divide-y divide-gray-200">
-                    {% for holding in holdings %}
-                    {% set shares = holding[1] or 0 %}
-                    {% set avg_price = holding[2] or 0 %}
-                    {% set current_price = holding[3] or 0 %}
-                    {% set current_value = shares * current_price %}
-                    {% set cost = shares * avg_price %}
-                    {% set gain = current_value - cost %}
-                    <tr>
-                        <td class="px-6 py-4 whitespace-nowrap">
-                            <a href="/artist/{{ holding[4] }}" class="text-green-600 hover:underline">{{ holding[0] }}</a>
-                        </td>
-                        <td class="px-6 py-4 whitespace-nowrap">{{ shares }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap">${{ avg_price | round(2) }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap">${{ current_price | round(2) }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap">${{ current_value | round(2) }}</td>
-                        <td class="px-6 py-4 whitespace-nowrap {% if gain >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
-                            ${{ gain | round(2) }}
-                        </td>
-                    </tr>
+    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+        {% for holding in holdings %}
+        <div class="themed-bg rounded-lg themed-shadow transition-all duration-300">
+            <!-- Artist Image and Basic Info -->
+            <a href="/artist/{{ holding.spotify_id }}" class="block p-4 border-b themed-border">
+                {% if holding.image_url %}
+                    <img src="{{ holding.image_url }}" alt="{{ holding.name }}" class="w-full h-32 object-cover rounded-md mb-3">
+                {% endif %}
+                <h3 class="text-lg font-bold themed-text mb-2">{{ holding.name }}</h3>
+                
+                <!-- Bio Section -->
+                {% if holding.spotify_info.bio %}
+                <p class="themed-text-secondary text-sm mb-3">{{ holding.spotify_info.bio }}</p>
+                {% endif %}
+                
+                <!-- Portfolio Stats -->
+                <div class="space-y-1 text-sm">
+                    <div class="themed-text-secondary">Shares: <span class="font-bold themed-text">{{ holding.shares or 0 }}</span></div>
+                    <div class="themed-text-secondary">Avg. Price: <span class="themed-text">${{ (holding.avg_price or 0) | round(2) }}</span></div>
+                    <div class="themed-text-secondary">Current Price: <span class="themed-text">${{ (holding.current_price or 0) | round(2) }}</span></div>
+                    <div class="themed-text-secondary">Value: <span class="themed-text">${{ (holding.value or 0) | round(2) }}</span></div>
+                    <div class="themed-text-secondary">Gain/Loss: <span class="font-bold {% if (holding.gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">${{ (holding.gain or 0) | round(2) }}</span></div>
+                    <div class="themed-text-secondary">Percent Gain/Loss: <span class="font-bold {% if (holding.percent_gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ (holding.percent_gain or 0) | round(2) }}%</span></div>
+                </div>
+            </a>
+            
+            <!-- Top Songs Section -->
+            {% if holding.spotify_info.top_tracks %}
+            <div class="p-4">
+                <h4 class="text-sm font-semibold themed-text mb-2">Top Songs</h4>
+                <div class="space-y-2">
+                    {% for track in holding.spotify_info.top_tracks %}
+                    <div class="flex items-center space-x-2">
+                        {% if track.album.images %}
+                        <img src="{{ track.album.images[-1].url }}" alt="{{ track.name }}" class="w-8 h-8 rounded object-cover">
+                        {% else %}
+                        <div class="w-8 h-8 themed-bg-tertiary rounded flex items-center justify-center">
+                            <span class="themed-text-secondary text-xs">♪</span>
+                        </div>
+                        {% endif %}
+                        <div class="flex-1 min-w-0">
+                            <div class="themed-text text-xs font-medium truncate">{{ track.name }}</div>
+                            <div class="themed-text-secondary text-xs truncate">{{ track.album.name }}</div>
+                        </div>
+                        <div class="text-xs themed-text-secondary">{{ track.popularity }}/100</div>
+                    </div>
                     {% endfor %}
-                </tbody>
-            </table>
+                </div>
+            </div>
+            {% endif %}
         </div>
+        {% endfor %}
     </div>
     {% else %}
-    <div class="bg-white p-6 rounded-lg shadow-md text-center text-gray-600">
+    <div class="themed-bg p-6 rounded-lg themed-shadow text-center themed-text-secondary transition-colors duration-300">
         {{ username }} has no holdings yet.
     </div>
     {% endif %}

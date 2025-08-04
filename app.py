@@ -6,6 +6,7 @@ import os
 import psycopg2
 from psycopg2 import pool
 import bcrypt
+import json
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
@@ -60,6 +61,17 @@ try:
             status VARCHAR(10) DEFAULT 'pending',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             CONSTRAINT unique_follow UNIQUE(follower_id, followed_id)
+        );
+        CREATE TABLE IF NOT EXISTS spotify_data (
+            id SERIAL PRIMARY KEY,
+            spotify_id VARCHAR(255) UNIQUE,
+            followers INTEGER DEFAULT 0,
+            popularity INTEGER DEFAULT 0,
+            genres TEXT[] DEFAULT '{}',
+            top_tracks JSONB DEFAULT '[]',
+            recent_albums JSONB DEFAULT '[]',
+            external_urls JSONB DEFAULT '{}',
+            last_updated TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
     conn.commit()
@@ -146,6 +158,40 @@ def artist_detail(spotify_id):
         if not artist_row:
             return "Artist not found", 404
         artist_id, name, image_url = artist_row
+        
+        # Fetch additional Spotify data from local storage
+        try:
+            cursor.execute("SELECT followers, popularity, genres, top_tracks, recent_albums, external_urls FROM spotify_data WHERE spotify_id = %s", (spotify_id,))
+            spotify_row = cursor.fetchone()
+            if spotify_row:
+                spotify_info = {
+                    'followers': spotify_row[0] or 0,
+                    'popularity': spotify_row[1] or 0,
+                    'genres': spotify_row[2] or [],
+                    'external_urls': spotify_row[5] if spotify_row[5] else {},  # JSONB already parsed by psycopg2
+                    'top_tracks': spotify_row[3] if spotify_row[3] else [],     # JSONB already parsed by psycopg2
+                    'recent_albums': spotify_row[4] if spotify_row[4] else []   # JSONB already parsed by psycopg2
+                }
+            else:
+                spotify_info = {
+                    'followers': 0,
+                    'popularity': 0,
+                    'genres': [],
+                    'external_urls': {},
+                    'top_tracks': [],
+                    'recent_albums': []
+                }
+        except Exception as e:
+            print(f"Error fetching local Spotify data: {e}")
+            spotify_info = {
+                'followers': 0,
+                'popularity': 0,
+                'genres': [],
+                'external_urls': {},
+                'top_tracks': [],
+                'recent_albums': []
+            }
+        
         # Get historical prices
         cursor.execute("SELECT recorded_at, price FROM artist_history WHERE spotify_id = %s ORDER BY recorded_at ASC", (spotify_id,))
         history = cursor.fetchall()
@@ -161,7 +207,13 @@ def artist_detail(spotify_id):
         price_row = cursor.fetchone()
         current_price = float(price_row[0]) if price_row else None
         # For artist detail, just pass order to template for dropdown (no sorting needed)
-        return render_template('artist_detail.html', artist=(name, image_url), history=history, holdings=holdings, current_price=current_price, order=order)
+        return render_template('artist_detail.html', 
+                             artist=(name, image_url), 
+                             history=history, 
+                             holdings=holdings, 
+                             current_price=current_price, 
+                             order=order,
+                             spotify_info=spotify_info)
     except Exception as e:
         conn.rollback()
         return f"Database error: {str(e)}", 500
@@ -258,8 +310,8 @@ def logout():
     session.pop('user_id', None)
     return redirect(url_for('login'))
 
-@app.route('/refresh_artists', methods=['POST'])
-def refresh_artists():
+@app.route('/refresh_data', methods=['POST'])
+def refresh_data():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     conn = db_pool.getconn()
@@ -267,15 +319,54 @@ def refresh_artists():
         cursor = conn.cursor()
         cursor.execute("SELECT spotify_id FROM artists")
         artist_ids = [row[0] for row in cursor.fetchall()]
+        
+        updated_count = 0
         for spotify_id in artist_ids:
             try:
-                artist = sp.artist(spotify_id)
-                price = artist['popularity']
+                # Get artist details from Spotify
+                artist_data = sp.artist(spotify_id)
+                
+                # Get top tracks from Spotify
+                top_tracks = sp.artist_top_tracks(spotify_id, country='US')
+                
+                # Get artist albums
+                albums = sp.artist_albums(spotify_id, album_type='album', limit=5)
+                
+                # Update price history (keep this as before)
+                price = artist_data['popularity']
                 cursor.execute("INSERT INTO artist_history (spotify_id, popularity, price) VALUES (%s, %s, %s)",
-                               (spotify_id, artist['popularity'], price))
+                               (spotify_id, artist_data['popularity'], price))
+                
+                # Update/insert spotify data
+                cursor.execute("""
+                    INSERT INTO spotify_data (spotify_id, followers, popularity, genres, top_tracks, recent_albums, external_urls, last_updated)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                    ON CONFLICT (spotify_id) DO UPDATE SET
+                        followers = EXCLUDED.followers,
+                        popularity = EXCLUDED.popularity,
+                        genres = EXCLUDED.genres,
+                        top_tracks = EXCLUDED.top_tracks,
+                        recent_albums = EXCLUDED.recent_albums,
+                        external_urls = EXCLUDED.external_urls,
+                        last_updated = NOW()
+                """, (
+                    spotify_id,
+                    artist_data.get('followers', {}).get('total', 0),
+                    artist_data.get('popularity', 0),
+                    artist_data.get('genres', []),
+                    json.dumps(top_tracks.get('tracks', [])[:10]),  # Convert to JSON string
+                    json.dumps(albums.get('items', [])[:5]),  # Convert to JSON string
+                    json.dumps(artist_data.get('external_urls', {}))  # Convert to JSON string
+                ))
+                
+                updated_count += 1
+                
             except Exception as e:
                 print(f"Error refreshing {spotify_id}: {e}")
+        
         conn.commit()
+        print(f"Successfully updated {updated_count} artists")
+        
     except Exception as e:
         conn.rollback()
         return f"Database error: {str(e)}", 500
@@ -438,6 +529,26 @@ def portfolio():
                 image_result = cursor.fetchone()
                 image_url = image_result[0] if image_result else None
                 
+                # Get local Spotify data
+                cursor.execute("SELECT followers, popularity, genres, top_tracks FROM spotify_data WHERE spotify_id = %s", (spotify_id,))
+                spotify_row = cursor.fetchone()
+                if spotify_row:
+                    # JSONB fields are already parsed by psycopg2, no need for json.loads()
+                    top_tracks_data = spotify_row[3] if spotify_row[3] else []
+                    spotify_info = {
+                        'followers': spotify_row[0] or 0,
+                        'popularity': spotify_row[1] or 0,
+                        'genres': spotify_row[2] or [],  # TEXT[] array is already a list
+                        'top_tracks': top_tracks_data[:3]  # Top 3 for portfolio
+                    }
+                else:
+                    spotify_info = {
+                        'followers': 0,
+                        'popularity': 0,
+                        'genres': [],
+                        'top_tracks': []
+                    }
+                
                 # Create holding object
                 holding = {
                     'name': name,
@@ -448,7 +559,8 @@ def portfolio():
                     'gain': gain,
                     'percent_gain': percent_gain,
                     'spotify_id': spotify_id,
-                    'image_url': image_url
+                    'image_url': image_url,
+                    'spotify_info': spotify_info
                 }
                 holdings.append(holding)
                 
@@ -498,6 +610,36 @@ def portfolio():
         db_pool.putconn(conn)
 
 # Social Features Routes
+@app.route('/all_users')
+def all_users():
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    conn = db_pool.getconn()
+    try:
+        cursor = conn.cursor()
+        # Get all users except current user, with their follow status
+        cursor.execute("""
+            SELECT u.id, u.username,
+                CASE
+                    WHEN f.status IS NULL THEN 'none'
+                    WHEN f.status = 'pending' THEN 'pending'
+                    WHEN f.status = 'accepted' THEN 'following'
+                END as follow_status
+            FROM users u
+            LEFT JOIN follows f ON f.followed_id = u.id AND f.follower_id = %s
+            WHERE u.id != %s
+            ORDER BY u.username
+        """, (session['user_id'], session['user_id']))
+        users = [{'id': id, 'username': username, 'follow_status': status} 
+                for id, username, status in cursor.fetchall()]
+        return render_template('all_users.html', users=users)
+    except Exception as e:
+        return f"Database error: {str(e)}", 500
+    finally:
+        cursor.close()
+        db_pool.putconn(conn)
+
 @app.route('/followers')
 def followers():
     if 'user_id' not in session:
@@ -725,16 +867,72 @@ def view_user_portfolio(user_id):
         
         holdings = cursor.fetchall()
         
-        # Calculate portfolio stats
+        # Process holdings data to include Spotify info
+        processed_holdings = []
         if holdings:
-            total_invested = sum(h[1] * h[2] for h in holdings)  # shares * avg_price
-            current_value = sum(h[1] * h[3] for h in holdings)  # shares * current_price
+            for h in holdings:
+                name = h[0]
+                shares = float(h[1]) if h[1] is not None else 0
+                avg_price = float(h[2]) if h[2] is not None else 0
+                current_price = float(h[3]) if h[3] is not None else 0
+                spotify_id = h[4]
+                
+                # Calculate values for this holding
+                value = shares * current_price
+                cost = shares * avg_price
+                gain = value - cost
+                percent_gain = ((gain / cost) * 100) if cost > 0 else 0
+                
+                # Get image URL for this artist
+                cursor.execute("SELECT image_url FROM artists WHERE spotify_id = %s", (spotify_id,))
+                image_result = cursor.fetchone()
+                image_url = image_result[0] if image_result else None
+                
+                # Get local Spotify data
+                cursor.execute("SELECT followers, popularity, genres, top_tracks FROM spotify_data WHERE spotify_id = %s", (spotify_id,))
+                spotify_row = cursor.fetchone()
+                if spotify_row:
+                    # JSONB fields are already parsed by psycopg2, no need for json.loads()
+                    top_tracks_data = spotify_row[3] if spotify_row[3] else []
+                    spotify_info = {
+                        'followers': spotify_row[0] or 0,
+                        'popularity': spotify_row[1] or 0,
+                        'genres': spotify_row[2] or [],
+                        'top_tracks': top_tracks_data[:3]  # Top 3 for portfolio
+                    }
+                else:
+                    spotify_info = {
+                        'followers': 0,
+                        'popularity': 0,
+                        'genres': [],
+                        'top_tracks': []
+                    }
+                
+                # Create holding object
+                holding = {
+                    'name': name,
+                    'shares': shares,
+                    'avg_price': avg_price,
+                    'current_price': current_price,
+                    'value': value,
+                    'gain': gain,
+                    'percent_gain': percent_gain,
+                    'spotify_id': spotify_id,
+                    'image_url': image_url,
+                    'spotify_info': spotify_info
+                }
+                processed_holdings.append(holding)
+        
+        # Calculate portfolio stats
+        if processed_holdings:
+            total_invested = sum(h['cost'] if 'cost' in h else h['shares'] * h['avg_price'] for h in processed_holdings)
+            current_value = sum(h['value'] for h in processed_holdings) 
             gain = current_value - total_invested
             net_worth = balance + current_value
             
             # Calculate percent of holdings that are profitable
-            profitable_holdings = sum(1 for h in holdings if h[1] * h[3] > h[1] * h[2])
-            percent_winning = (profitable_holdings / len(holdings) * 100)
+            profitable_holdings = sum(1 for h in processed_holdings if h['gain'] > 0)
+            percent_winning = (profitable_holdings / len(processed_holdings) * 100)
         else:
             total_invested = 0
             current_value = 0
@@ -745,7 +943,7 @@ def view_user_portfolio(user_id):
         return render_template('user_portfolio.html',
                             username=username,
                             user_id=user_id,
-                            holdings=holdings,
+                            holdings=processed_holdings,
                             balance=balance,
                             total_invested=total_invested,
                             gain=gain,
@@ -785,7 +983,7 @@ def settings():
 
 def main():
     # Initialize Spotify API client and database connection
-    app.run(debug=True, port=5001)
+    app.run(debug=True, port=5004)
 
 if __name__ == '__main__':
     main()

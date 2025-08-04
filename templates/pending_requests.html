@@ -4,16 +4,16 @@
 
 {% block content %}
 <div class="max-w-4xl mx-auto">
-    <h1 class="text-2xl font-bold mb-6">Follow Requests</h1>
+    <h1 class="text-2xl font-bold themed-text mb-6">Follow Requests</h1>
     
     {% if requests %}
-    <div class="bg-white p-6 rounded-lg shadow-md">
+    <div class="themed-bg p-6 rounded-lg themed-shadow transition-colors duration-300">
         <div class="space-y-4">
             {% for request in requests %}
-            <div class="flex items-center justify-between border-b pb-4">
+            <div class="flex items-center justify-between themed-border border-b pb-4">
                 <div>
-                    <span class="font-medium">{{ request.follower.username }}</span>
-                    <span class="text-gray-500"> wants to follow you</span>
+                    <span class="font-medium themed-text">{{ request.follower.username }}</span>
+                    <span class="themed-text-secondary"> wants to follow you</span>
                 </div>
                 <div class="flex gap-2">
                     <form action="/follow_response/{{ request.id }}" method="POST" class="inline">
@@ -36,7 +36,7 @@
         </div>
     </div>
     {% else %}
-    <div class="bg-white p-6 rounded-lg shadow-md text-center text-gray-600">
+    <div class="themed-bg p-6 rounded-lg themed-shadow text-center themed-text-secondary transition-colors duration-300">
         No pending follow requests.
     </div>
     {% endif %}

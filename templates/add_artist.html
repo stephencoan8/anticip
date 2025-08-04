@@ -10,25 +10,25 @@
     {% endif %}
     <form action="/add_artist" method="POST" class="w-full max-w-md mx-auto mb-6">
         <div class="mb-4">
-            <label for="artist_name" class="block text-sm font-medium text-gray-700">Artist Name</label>
-            <input type="text" id="artist_name" name="artist_name" class="mt-1 p-2 w-full border rounded-md focus:ring-green-500 focus:border-green-500" placeholder="Enter artist name" required value="{{ search_query if search_query else '' }}">
+            <label for="artist_name" class="block text-sm font-medium themed-text mb-2">Artist Name</label>
+            <input type="text" id="artist_name" name="artist_name" class="modern-input mb-3" placeholder="Enter artist name" required value="{{ search_query if search_query else '' }}">
         </div>
-        <button type="submit" class="w-full bg-green-600 text-white p-2 rounded-md hover:bg-green-700">Search</button>
+        <button type="submit" class="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 transition-colors duration-200 font-medium">Search</button>
     </form>
     {% if artists %}
     <div class="mb-6">
-        <h2 class="text-xl font-semibold text-center mb-4">Select Artist to Add</h2>
+        <h2 class="text-xl font-semibold text-center themed-text mb-4">Select Artist to Add</h2>
         <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {% for artist in artists %}
-            <div class="bg-white p-4 rounded-lg shadow-md flex flex-col items-center">
+            <div class="themed-bg p-4 rounded-lg themed-shadow flex flex-col items-center transition-colors duration-300">
                 {% if artist.images and artist.images[0] %}
                     <img src="{{ artist.images[0].url }}" alt="{{ artist.name }}" class="w-32 h-32 object-cover rounded mb-2">
                 {% else %}
-                    <div class="w-32 h-32 bg-gray-200 rounded mb-2 flex items-center justify-center text-gray-500">No Image</div>
+                    <div class="w-32 h-32 themed-bg-tertiary rounded mb-2 flex items-center justify-center themed-text-secondary transition-colors duration-300">No Image</div>
                 {% endif %}
-                <div class="font-bold text-lg mb-1">{{ artist.name }}</div>
+                <div class="font-bold text-lg themed-text mb-1">{{ artist.name }}</div>
                 {% if artist.genres %}
-                    <div class="text-sm text-gray-500 mb-1">{{ artist.genres | join(', ') }}</div>
+                    <div class="text-sm themed-text-secondary mb-1">{{ artist.genres | join(', ') }}</div>
                 {% endif %}
                 <form action="/confirm_add_artist" method="POST" class="mt-2">
                     <input type="hidden" name="spotify_id" value="{{ artist.id }}">

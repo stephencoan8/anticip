@@ -7,29 +7,33 @@
     <div class="flex justify-between items-center mb-2">
         <h1 class="text-3xl font-bold text-green-600">Artist Stocks</h1>
     </div>
-    <div class="mb-4 flex justify-center">
+    <div class="mb-6 flex justify-center">
         <form action="/artists" method="GET" class="w-full max-w-md">
-            <input type="text" name="search" value="{{ search_query }}" placeholder="Search artists..." class="p-2 w-full border rounded-md focus:ring-green-500 focus:border-green-500">
-            <button type="submit" class="mt-2 bg-green-600 text-white p-2 rounded-md hover:bg-green-700 w-full">Search</button>
+            <input type="text" name="search" value="{{ search_query }}" placeholder="Search artists..." class="modern-input mb-3">
+            <button type="submit" class="w-full bg-green-600 text-white py-3 px-4 rounded-lg hover:bg-green-700 transition-colors duration-200 font-medium">Search</button>
         </form>
     </div>
-        <h2 class="text-xl font-semibold mb-4">Artists</h2>
-        <!-- Sort dropdown and arrow for artists -->
-        <form method="get" id="artistSortForm" class="flex items-center gap-2 mb-4">
-            <label for="order" class="font-medium">Order by:</label>
-            <input type="hidden" name="direction" id="artistDirectionInput" value="{{ direction if direction else 'asc' }}">
-            <select name="order" id="order" class="border rounded px-2 py-1" onchange="document.getElementById('artistSortForm').submit()">
-                <option value="alphabetical" {% if order == 'alphabetical' or not order %}selected{% endif %}>Alphabetical</option>
-                <option value="popularity" {% if order == 'popularity' %}selected{% endif %}>Popularity</option>
-            </select>
-            <button type="button" class="ml-2 text-xl" onclick="toggleArtistDirection()">
-                {% if direction == 'asc' or not direction %}
-                    &#9650;
-                {% else %}
-                    &#9660;
-                {% endif %}
-            </button>
-        </form>
+    <h2 class="text-xl font-semibold mb-4 themed-text">Artists</h2>
+    <!-- Sort dropdown and arrow for artists -->
+    <form method="get" id="artistSortForm" class="flex items-center gap-3 mb-6">
+        <label for="order" class="font-medium themed-text text-sm">Sort by:</label>
+        <input type="hidden" name="direction" id="artistDirectionInput" value="{{ direction if direction else 'asc' }}">
+        <select name="order" id="order" class="modern-dropdown" onchange="document.getElementById('artistSortForm').submit()">
+            <option value="alphabetical" {% if order == 'alphabetical' or not order %}selected{% endif %}>Alphabetical</option>
+            <option value="popularity" {% if order == 'popularity' %}selected{% endif %}>Popularity</option>
+        </select>
+        <button type="button" class="sort-direction-btn" onclick="toggleArtistDirection()" title="Toggle sort direction">
+            {% if direction == 'asc' or not direction %}
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>
+                </svg>
+            {% else %}
+                <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                </svg>
+            {% endif %}
+        </button>
+    </form>
         <script>
         function toggleArtistDirection() {
             var dirInput = document.getElementById('artistDirectionInput');
@@ -41,26 +45,28 @@
             {% if records %}
                 {% for spotify_id, name, popularity, price, recorded_at, image_url in records %}
                 <a href="/artist/{{ spotify_id }}" class="block">
-                    <div class="bg-white p-4 rounded-lg shadow-md hover:shadow-lg transition">
+                    <div class="themed-bg p-4 rounded-lg themed-shadow hover:shadow-lg transition-all duration-300">
                         {% if image_url %}
                             <img src="{{ image_url }}" alt="{{ name }}" class="w-full h-48 object-cover rounded-md mb-4">
                         {% else %}
-                            <div class="w-full h-48 bg-gray-200 rounded-md mb-4 flex items-center justify-center text-gray-500">No Image</div>
+                            <div class="w-full h-48 themed-bg-tertiary rounded-md mb-4 flex items-center justify-center themed-text-secondary transition-colors duration-300">No Image</div>
                         {% endif %}
-                        <h2 class="text-xl font-semibold text-gray-800">{{ name }}</h2>
-                        <p class="text-gray-600">Popularity: {{ popularity }}</p>
-                        <p class="text-gray-600">Stock Price: ${{ price | float | round(2) }}</p>
-                        <p class="text-gray-500 text-sm">Last Updated: {{ recorded_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
+                        <h2 class="text-xl font-semibold themed-text">{{ name }}</h2>
+                        <p class="themed-text-secondary">Popularity: {{ popularity }}</p>
+                        <p class="themed-text-secondary">Stock Price: ${{ price | float | round(2) }}</p>
+                        <p class="themed-text-tertiary text-sm">Last Updated: {{ recorded_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
                     </div>
                 </a>
                 {% endfor %}
             {% else %}
-                <p class="text-center text-gray-500">No artists found</p>        {% endif %}
+                <p class="text-center themed-text-secondary">No artists found</p>
+            {% endif %}
+        </div>
     </div>
-    <form action="/refresh_artists" method="POST" class="fixed bottom-6 right-6">
+    <form action="/refresh_data" method="POST" class="fixed bottom-6 right-6">
         <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-green-700 flex items-center">
             <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582M20 20v-5h-.581M5.635 19.364A9 9 0 1112 21v-1m0-16V3a9 9 0 016.364 15.364" /></svg>
-            Refresh Current Popularity
+            Refresh Spotify Data
         </button>
     </form>
 </div>

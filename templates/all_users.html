@@ -1,0 +1,56 @@
+{% extends "base.html" %}
+
+{% block title %}All Users - Antici{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <h1 class="text-3xl font-bold text-green-600 mb-6">All Users</h1>
+    
+    {% if users %}
+        <div class="themed-bg rounded-lg themed-shadow transition-colors duration-300">
+            <div class="p-6">
+                <div class="space-y-4">
+                    {% for user in users %}
+                    <div class="flex items-center justify-between p-4 themed-bg-tertiary rounded-lg transition-colors duration-300">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-10 h-10 bg-green-100 rounded-full flex items-center justify-center">
+                                <span class="text-green-600 font-semibold text-sm">{{ user.username[0].upper() }}</span>
+                            </div>
+                            <div>
+                                <div class="themed-text font-medium">{{ user.username }}</div>
+                                <div class="themed-text-secondary text-sm">
+                                    <a href="{{ url_for('view_user_portfolio', user_id=user.id) }}" class="text-green-600 hover:text-green-700">View Portfolio</a>
+                                </div>
+                            </div>
+                        </div>
+                        <div>
+                            {% if user.follow_status == 'none' %}
+                                <form action="{{ url_for('follow_user', followed_id=user.id) }}" method="POST" class="inline">
+                                    <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 transition-colors duration-200 text-sm font-medium">
+                                        Follow
+                                    </button>
+                                </form>
+                            {% elif user.follow_status == 'pending' %}
+                                <span class="themed-text-secondary text-sm px-4 py-2 bg-yellow-100 text-yellow-800 rounded-lg">
+                                    Request Sent
+                                </span>
+                            {% elif user.follow_status == 'following' %}
+                                <form action="{{ url_for('unfollow_user', followed_id=user.id) }}" method="POST" class="inline">
+                                    <button type="submit" class="themed-text-secondary border border-gray-300 px-4 py-2 rounded-lg hover:bg-red-50 hover:text-red-600 hover:border-red-300 transition-colors duration-200 text-sm font-medium">
+                                        Unfollow
+                                    </button>
+                                </form>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    {% else %}
+        <div class="themed-bg p-8 rounded-lg themed-shadow text-center transition-colors duration-300">
+            <div class="themed-text-secondary text-lg">No other users found.</div>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

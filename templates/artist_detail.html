@@ -7,98 +7,299 @@
 {% endblock %}
 
 {% block content %}
-<div class="max-w-6xl mx-auto">
-    <div class="flex justify-between items-center mb-4">
-        <h1 class="text-2xl font-bold text-gray-800">{{ artist[0] }}</h1>
+<div class="max-w-7xl mx-auto">
+    <!-- Header Section -->
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold text-green-600">{{ artist[0] }}</h1>
         <form action="/delete_artist/{{ request.view_args['spotify_id'] }}" method="POST" onsubmit="return confirm('Are you sure you want to delete this artist? This will remove all history and bets for this artist.')">
-            <button type="submit" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700">Delete Artist</button>
+            <button type="submit" class="bg-red-600 text-white px-4 py-2 rounded-lg hover:bg-red-700 transition-colors duration-200">Delete Artist</button>
         </form>
     </div>
-    <div class="bg-white p-6 rounded-lg shadow-md">
-        {% if artist[1] %}
-            <img src="{{ artist[1] }}" alt="{{ artist[0] }}" class="w-48 h-48 object-cover rounded-md mb-4">
-        {% endif %}
-        <div class="mb-6">
-            <h2 class="text-xl font-semibold mb-2">Your Holdings</h2>
-            {% if holdings %}
-                {% set shares = holdings[0] %}
-                {% set avg_price = holdings[1] %}
-                {% set value = shares * current_price %}
-                {% set cost = shares * avg_price %}
-                {% set gain = value - cost %}
-                <div class="mb-2">Shares Owned: <span class="font-bold">{{ shares }}</span></div>
-                <div class="mb-2">Avg. Price Paid: ${{ avg_price | float | round(2) }}</div>
-                <div class="mb-2">Current Price: ${{ current_price | float | round(2) }}</div>
-                <div class="mb-2">Current Value: ${{ value | round(2) }}</div>
-                <div class="mb-2">Profit/Loss: <span class="font-bold {% if gain >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ gain | round(2) }}</span></div>
-            {% else %}
-                <div class="text-gray-500">You do not own any shares in this artist.</div>
+
+    <!-- Artist Overview Grid -->
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-8">
+        <!-- Artist Info Card -->
+        <div class="lg:col-span-1">
+            <div class="themed-bg p-6 rounded-lg themed-shadow transition-colors duration-300">
+                {% if artist[1] %}
+                    <img src="{{ artist[1] }}" alt="{{ artist[0] }}" class="w-full h-64 object-cover rounded-lg mb-4">
+                {% else %}
+                    <div class="w-full h-64 themed-bg-tertiary rounded-lg mb-4 flex items-center justify-center themed-text-secondary transition-colors duration-300">No Image</div>
+                {% endif %}
+                
+                <!-- Artist Stats -->
+                <div class="space-y-3">
+                    <div class="flex justify-between items-center">
+                        <span class="themed-text-secondary">Spotify Followers:</span>
+                        <span class="themed-text font-semibold">{{ "{:,}".format(spotify_info.followers) }}</span>
+                    </div>
+                    <div class="flex justify-between items-center">
+                        <span class="themed-text-secondary">Popularity Score:</span>
+                        <span class="themed-text font-semibold">{{ spotify_info.popularity }}/100</span>
+                    </div>
+                    {% if spotify_info.genres %}
+                    <div>
+                        <span class="themed-text-secondary">Genres:</span>
+                        <div class="flex flex-wrap gap-1 mt-1">
+                            {% for genre in spotify_info.genres[:3] %}
+                            <span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">{{ genre.title() }}</span>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% endif %}
+                    {% if spotify_info.external_urls.spotify %}
+                    <div class="pt-2">
+                        <a href="{{ spotify_info.external_urls.spotify }}" target="_blank" class="text-green-600 hover:text-green-700 text-sm font-medium flex items-center">
+                            <svg class="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 24 24">
+                                <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.42 1.56-.301.421-1.02.599-1.559.3z"/>
+                            </svg>
+                            Open in Spotify
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <!-- Artist Bio Card -->
+            {% if spotify_info.bio or spotify_info.genres %}
+            <div class="themed-bg p-6 rounded-lg themed-shadow transition-colors duration-300 mt-6">
+                <h3 class="text-lg font-semibold themed-text mb-3">About {{ artist[0] }}</h3>
+                {% if spotify_info.bio %}
+                    <p class="themed-text-secondary text-sm leading-relaxed">{{ spotify_info.bio }}</p>
+                {% elif spotify_info.genres %}
+                    <p class="themed-text-secondary text-sm leading-relaxed">
+                        {{ artist[0] }} is known for their contributions to {{ spotify_info.genres[:2] | join(' and ') }} music.
+                        {% if spotify_info.followers > 1000000 %}
+                        With over {{ "{:,.0f}".format(spotify_info.followers / 1000000) }} million followers on Spotify, they've established themselves as a major force in the music industry.
+                        {% elif spotify_info.followers > 100000 %}
+                        With {{ "{:,}".format(spotify_info.followers) }} followers on Spotify, they've built a dedicated fanbase.
+                        {% endif %}
+                    </p>
+                {% endif %}
+            </div>
             {% endif %}
-            <div class="flex gap-4 mt-4">
-                <button id="buyBtn" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">Buy Shares</button>
-                <button id="sellBtn" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700" {% if not holdings or holdings[0] == 0 %}disabled class="opacity-50 cursor-not-allowed"{% endif %}>Sell Shares</button>
+        </div>
+
+        <!-- Holdings & Trading Card -->
+        <div class="lg:col-span-2">
+            <div class="themed-bg p-6 rounded-lg themed-shadow transition-colors duration-300">
+                <h2 class="text-xl font-semibold themed-text mb-4">Your Holdings</h2>
+                {% if holdings %}
+                    {% set shares = holdings[0] %}
+                    {% set avg_price = holdings[1] %}
+                    {% set value = shares * current_price %}
+                    {% set cost = shares * avg_price %}
+                    {% set gain = value - cost %}
+                    
+                    <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
+                        <div class="themed-bg-tertiary p-4 rounded-lg transition-colors duration-300">
+                            <div class="themed-text-secondary text-sm">Shares Owned</div>
+                            <div class="text-xl font-bold themed-text">{{ shares }}</div>
+                        </div>
+                        <div class="themed-bg-tertiary p-4 rounded-lg transition-colors duration-300">
+                            <div class="themed-text-secondary text-sm">Avg. Price</div>
+                            <div class="text-xl font-bold themed-text">${{ avg_price | float | round(2) }}</div>
+                        </div>
+                        <div class="themed-bg-tertiary p-4 rounded-lg transition-colors duration-300">
+                            <div class="themed-text-secondary text-sm">Current Price</div>
+                            <div class="text-xl font-bold themed-text">${{ current_price | float | round(2) }}</div>
+                        </div>
+                        <div class="themed-bg-tertiary p-4 rounded-lg transition-colors duration-300">
+                            <div class="themed-text-secondary text-sm">Current Value</div>
+                            <div class="text-xl font-bold themed-text">${{ value | round(2) }}</div>
+                        </div>
+                        <div class="themed-bg-tertiary p-4 rounded-lg transition-colors duration-300">
+                            <div class="themed-text-secondary text-sm">Profit/Loss</div>
+                            <div class="text-xl font-bold {% if gain >= 0 %}text-green-600{% else %}text-red-600{% endif %}">${{ gain | round(2) }}</div>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="themed-text-secondary mb-6">You do not own any shares in this artist.</div>
+                {% endif %}
+                
+                <div class="flex gap-4">
+                    <button id="buyBtn" class="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors duration-200 font-medium">Buy Shares</button>
+                    <button id="sellBtn" class="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition-colors duration-200 font-medium {% if not holdings or holdings[0] == 0 %}opacity-50 cursor-not-allowed{% endif %}" {% if not holdings or holdings[0] == 0 %}disabled{% endif %}>Sell Shares</button>
+                </div>
             </div>
         </div>
-        <h2 class="text-xl font-semibold mb-4">Stock Price History</h2>
-        <canvas id="priceChart" width="400" height="200"></canvas>
     </div>
+
+    <!-- Top Songs & Chart Section -->
+    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-8">
+        <!-- Top Songs -->
+        {% if spotify_info.top_tracks %}
+        <div class="themed-bg p-6 rounded-lg themed-shadow transition-colors duration-300">
+            <h2 class="text-xl font-semibold themed-text mb-4">Top Songs</h2>
+            <div class="space-y-3">
+                {% for track in spotify_info.top_tracks[:5] %}
+                <div class="flex items-center space-x-4 p-3 themed-bg-tertiary rounded-lg transition-colors duration-300">
+                    {% if track.album.images %}
+                    <img src="{{ track.album.images[-1].url }}" alt="{{ track.name }}" class="w-12 h-12 rounded object-cover">
+                    {% else %}
+                    <div class="w-12 h-12 themed-bg rounded flex items-center justify-center themed-text-secondary">♪</div>
+                    {% endif %}
+                    <div class="flex-1 min-w-0">
+                        <div class="themed-text font-medium truncate">{{ track.name }}</div>
+                        <div class="themed-text-secondary text-sm">{{ track.album.name }}</div>
+                    </div>
+                    <div class="text-right">
+                        <div class="themed-text-secondary text-sm">Popularity</div>
+                        <div class="themed-text font-semibold">{{ track.popularity }}/100</div>
+                    </div>
+                    {% if track.external_urls.spotify %}
+                    <a href="{{ track.external_urls.spotify }}" target="_blank" class="text-green-600 hover:text-green-700">
+                        <svg class="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                            <path d="M12 0C5.4 0 0 5.4 0 12s5.4 12 12 12 12-5.4 12-12S18.66 0 12 0zm5.521 17.34c-.24.359-.66.48-1.021.24-2.82-1.74-6.36-2.101-10.561-1.141-.418.122-.779-.179-.899-.539-.12-.421.18-.78.54-.9 4.56-1.021 8.52-.6 11.64 1.32.42.18.479.659.301 1.02zm1.44-3.3c-.301.42-.841.6-1.262.3-3.239-1.98-8.159-2.58-11.939-1.38-.479.12-1.02-.12-1.14-.6-.12-.48.12-1.021.6-1.141C9.6 9.9 15 10.561 18.72 12.84c.361.181.54.78.241 1.2zm.12-3.36C15.24 8.4 8.82 8.16 5.16 9.301c-.6.179-1.2-.181-1.38-.721-.18-.601.18-1.2.72-1.381 4.26-1.26 11.28-1.02 15.721 1.621.539.3.719 1.02.42 1.56-.301.421-1.02.599-1.559.3z"/>
+                        </svg>
+                    </a>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Price Chart -->
+        <div class="themed-bg p-6 rounded-lg themed-shadow transition-colors duration-300">
+            <h2 class="text-xl font-semibold themed-text mb-4">Stock Price History</h2>
+            <canvas id="priceChart" width="400" height="200"></canvas>
+        </div>
+    </div>
+
+    <!-- Recent Albums -->
+    {% if spotify_info.recent_albums %}
+    <div class="themed-bg p-6 rounded-lg themed-shadow transition-colors duration-300">
+        <h2 class="text-xl font-semibold themed-text mb-4">Recent Albums</h2>
+        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+            {% for album in spotify_info.recent_albums %}
+            <div class="flex flex-col items-center text-center">
+                {% if album.images %}
+                <img src="{{ album.images[0].url }}" alt="{{ album.name }}" class="w-24 h-24 rounded-lg object-cover mb-2">
+                {% else %}
+                <div class="w-24 h-24 themed-bg-tertiary rounded-lg mb-2 flex items-center justify-center themed-text-secondary">♪</div>
+                {% endif %}
+                <div class="themed-text text-sm font-medium truncate w-full">{{ album.name }}</div>
+                <div class="themed-text-secondary text-xs">{{ album.release_date[:4] }}</div>
+                {% if album.external_urls.spotify %}
+                <a href="{{ album.external_urls.spotify }}" target="_blank" class="text-green-600 hover:text-green-700 text-xs mt-1">View</a>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
 </div>
 
 <!-- Buy/Sell Modal -->
 <div id="modalBg" class="fixed inset-0 bg-black bg-opacity-40 flex items-center justify-center z-50 hidden">
-    <div id="modalBox" class="bg-white rounded-lg shadow-lg p-6 w-full max-w-sm relative">
-        <button id="closeModal" class="absolute top-2 right-2 text-gray-400 hover:text-gray-600">&times;</button>
-        <h3 id="modalTitle" class="text-xl font-bold mb-4"></h3>
+    <div id="modalBox" class="themed-bg rounded-lg themed-shadow p-6 w-full max-w-sm relative transition-colors duration-300">
+        <button id="closeModal" class="absolute top-2 right-2 themed-text-secondary hover:themed-text text-2xl">&times;</button>
+        <h3 id="modalTitle" class="text-lg font-semibold themed-text mb-4">Buy Shares</h3>
         <form id="modalForm" method="POST">
             <div class="mb-4">
-                <label for="shares" class="block mb-2">Number of Shares</label>
-                <input type="number" id="shares" name="shares" min="1" value="1" class="w-full border rounded px-2 py-1">
+                <label for="shares" class="block text-sm font-medium themed-text mb-2">Number of Shares</label>
+                <input type="number" id="shares" name="shares" min="1" value="1" class="modern-input">
             </div>
-            <div class="mb-2" id="modalMath"></div>
-            <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 w-full" id="confirmBtn">Confirm</button>
+            <div id="modalMath" class="themed-text-secondary text-sm mb-4"></div>
+            <div class="flex gap-3">
+                <button type="submit" class="flex-1 bg-green-600 text-white py-2 px-4 rounded-lg hover:bg-green-700 transition-colors duration-200 font-medium">Confirm</button>
+                <button type="button" id="cancelModal" class="flex-1 themed-bg-tertiary themed-text py-2 px-4 rounded-lg hover:opacity-80 transition-colors duration-200">Cancel</button>
+            </div>
         </form>
     </div>
 </div>
-{% endblock %}
 
-{% block extra_scripts %}
 <script>
+    // Price chart
+    const ctx = document.getElementById('priceChart').getContext('2d');
     const history = {{ history|tojson|safe }};
-    const labels = history.map(h => new Date(h[0]).toLocaleString());
-    const data = history.map(h => h[1]);
-    new Chart(document.getElementById('priceChart'), {
+    const chartData = history.map(item => ({
+        x: item[0],
+        y: item[1]
+    }));
+    
+    // Get theme colors
+    const isDarkTheme = document.documentElement.classList.contains('dark-theme');
+    const textColor = isDarkTheme ? '#ffffff' : '#111827';
+    const gridColor = isDarkTheme ? '#374151' : '#e5e7eb';
+    
+    new Chart(ctx, {
         type: 'line',
         data: {
-            labels: labels,
             datasets: [{
-                label: 'Stock Price',
-                data: data,
-                borderColor: 'rgb(34,197,94)',
-                backgroundColor: 'rgba(34,197,94,0.2)',
-                fill: true,
-                tension: 0.3
+                label: '{{ artist[0] }}',
+                data: chartData,
+                borderColor: '#10b981',
+                backgroundColor: 'rgba(16, 185, 129, 0.1)',
+                tension: 0.2,
+                fill: true
             }]
         },
         options: {
+            responsive: true,
+            plugins: {
+                legend: {
+                    labels: {
+                        color: textColor
+                    }
+                }
+            },
             scales: {
-                x: { title: { display: true, text: 'Date' } },
-                y: { title: { display: true, text: 'Price' } }
+                x: { 
+                    title: { 
+                        display: true, 
+                        text: 'Date',
+                        color: textColor
+                    },
+                    ticks: {
+                        color: textColor,
+                        callback: function(value, index, values) {
+                            // Format date as MM/DD/YY
+                            const date = new Date(this.getLabelForValue(value));
+                            const month = String(date.getMonth() + 1).padStart(2, '0');
+                            const day = String(date.getDate()).padStart(2, '0');
+                            const year = String(date.getFullYear()).slice(-2);
+                            return `${month}/${day}/${year}`;
+                        }
+                    },
+                    grid: {
+                        color: gridColor
+                    }
+                },
+                y: { 
+                    title: { 
+                        display: true, 
+                        text: 'Price ($)',
+                        color: textColor
+                    },
+                    ticks: {
+                        color: textColor
+                    },
+                    grid: {
+                        color: gridColor
+                    }
+                }
             }
         }
     });
+    
     // Modal logic
     const buyBtn = document.getElementById('buyBtn');
     const sellBtn = document.getElementById('sellBtn');
     const modalBg = document.getElementById('modalBg');
     const modalBox = document.getElementById('modalBox');
     const closeModal = document.getElementById('closeModal');
+    const cancelModal = document.getElementById('cancelModal');
     const modalTitle = document.getElementById('modalTitle');
     const modalForm = document.getElementById('modalForm');
     const sharesInput = document.getElementById('shares');
     const modalMath = document.getElementById('modalMath');
+    
     let action = '';
     let maxShares = {{ (holdings[0] if holdings else 0) | tojson }};
     let price = {{ current_price | float | round(2) | tojson }};
+    
     buyBtn.onclick = function() {
         action = 'buy';
         modalTitle.textContent = 'Buy Shares';
@@ -108,6 +309,7 @@
         updateMath();
         modalBg.classList.remove('hidden');
     };
+    
     sellBtn.onclick = function() {
         action = 'sell';
         modalTitle.textContent = 'Sell Shares';
@@ -117,10 +319,17 @@
         updateMath();
         modalBg.classList.remove('hidden');
     };
+    
     closeModal.onclick = function() {
         modalBg.classList.add('hidden');
     };
+    
+    cancelModal.onclick = function() {
+        modalBg.classList.add('hidden');
+    };
+    
     sharesInput.oninput = updateMath;
+    
     function updateMath() {
         let shares = parseInt(sharesInput.value) || 0;
         if (action === 'buy') {
@@ -129,7 +338,8 @@
             modalMath.innerHTML = `Price per Share: $${price}<br>Total Value: $${(shares * price).toFixed(2)}<br>Max Shares: ${maxShares}`;
         }
     }
-    // Blur background when modal is open
+    
+    // Close modal when clicking outside
     modalBg.addEventListener('click', function(e) {
         if (e.target === modalBg) {
             modalBg.classList.add('hidden');
