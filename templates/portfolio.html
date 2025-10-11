@@ -1,49 +1,75 @@
 {% extends "base.html" %}
 
-{% block title %}Your Portfolio - Antici{% endblock %}
+{% block title %}{% if is_own_portfolio %}Your Portfolio{% else %}{{ username }}'s Portfolio{% endif %} - anticip{% endblock %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto">
     <div class="flex justify-between items-center mb-6">
-        <h1 class="text-3xl font-bold text-green-600">Your Portfolio</h1>
+        <h1 class="text-3xl font-bold text-green-600">
+            {% if is_own_portfolio %}
+                Your Portfolio
+            {% else %}
+                {{ username }}'s Portfolio
+            {% endif %}
+        </h1>
     </div>
 
         <div class="themed-bg p-6 rounded-lg themed-shadow mb-6 transition-colors duration-300">
             <h2 class="text-xl font-semibold mb-4 themed-text">Portfolio Summary</h2>
-            <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div class="themed-bg-tertiary p-4 rounded themed-shadow transition-colors duration-300">
-                    <div class="themed-text-secondary">Total Net Worth</div>
-                    <div class="text-2xl font-bold themed-text">${{ (net_worth or 0) | round(2) }}</div>
+                    <div class="themed-text-secondary">Total Points</div>
+                    <div class="text-2xl font-bold themed-text">{{ (net_worth or 0) | round(0) | int }}</div>
                 </div>
                 <div class="themed-bg-tertiary p-4 rounded themed-shadow transition-colors duration-300">
-                    <div class="themed-text-secondary">Total Invested</div>
-                    <div class="text-2xl font-bold themed-text">${{ (total_invested or 0) | round(2) }}</div>
+                    <div class="themed-text-secondary">Points Invested</div>
+                    <div class="text-2xl font-bold themed-text">{{ (total_invested or 0) | round(0) | int }}</div>
                 </div>
                 <div class="themed-bg-tertiary p-4 rounded themed-shadow transition-colors duration-300">
-                    <div class="themed-text-secondary">Overall Gain/Loss</div>
-                    <div class="text-2xl font-bold {% if (gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">${{ (gain or 0) | round(2) }}</div>
-                </div>
-                <div class="themed-bg-tertiary p-4 rounded themed-shadow transition-colors duration-300">
-                    <div class="themed-text-secondary">Cash Balance</div>
-                    <div class="text-2xl font-bold themed-text">${{ (balance or 0) | round(2) }}</div>
-                </div>
-                <div class="themed-bg-tertiary p-4 rounded themed-shadow col-span-4 transition-colors duration-300">
-                    <div class="themed-text-secondary">Percent Winning</div>
-                    <div class="text-2xl font-bold themed-text">{{ (percent_winning or 0) | round(2) }}%</div>
+                    <div class="themed-text-secondary">{% if is_own_portfolio %}Points in Reserve{% else %}Gain/Loss{% endif %}</div>
+                    <div class="text-2xl font-bold {% if is_own_portfolio %}themed-text{% else %}{% if (gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}{% endif %}">
+                        {% if is_own_portfolio %}
+                            {{ (balance or 0) | round(0) | int }}
+                        {% else %}
+                            {{ (gain or 0) | round(0) | int }} pts
+                        {% endif %}
+                    </div>
                 </div>
             </div>
         </div>
-        <h2 class="text-xl font-semibold mb-4 themed-text">Your Holdings</h2>
-        <!-- Sort dropdown and arrow -->
+        </div>
+        
+        <!-- Portfolio History Chart -->
+        <div class="themed-bg p-6 rounded-lg themed-shadow mb-6 transition-colors duration-300">
+            <h2 class="text-xl font-semibold mb-4 themed-text">
+                {% if is_own_portfolio %}
+                    Your Portfolio Performance
+                {% else %}
+                    {{ username }}'s Portfolio Performance
+                {% endif %}
+            </h2>
+            <div class="h-64">
+                <canvas id="portfolioChart"></canvas>
+            </div>
+        </div>
+        
+        <h2 class="text-xl font-semibold mb-4 themed-text">
+            {% if is_own_portfolio %}
+                Your Holdings
+            {% else %}
+                {{ username }}'s Holdings
+            {% endif %}
+        </h2>
+        <!-- Sort dropdown, view toggle, and direction button -->
         <form method="get" id="sortForm" class="flex items-center gap-3 mb-6">
             <label for="order" class="font-medium themed-text text-sm">Sort by:</label>
             <input type="hidden" name="direction" id="directionInput" value="{{ direction }}">
+            <input type="hidden" name="view" id="portfolioViewInput" value="{{ request.args.get('view', 'tiles') }}">
             <select name="order" id="order" class="modern-dropdown" onchange="document.getElementById('sortForm').submit()">
                 <option value="alphabetical" {% if order == 'alphabetical' %}selected{% endif %}>Alphabetical</option>
                 <option value="popularity" {% if order == 'popularity' %}selected{% endif %}>Popularity</option>
                 <option value="net_holdings" {% if order == 'net_holdings' %}selected{% endif %}>Net Holdings</option>
-                <option value="gain" {% if order == 'gain' %}selected{% endif %}>Biggest Gain/Loss ($)</option>
-                <option value="percent_gain" {% if order == 'percent_gain' %}selected{% endif %}>Biggest Gain/Loss (%)</option>
+                <option value="gain" {% if order == 'gain' %}selected{% endif %}>Biggest Gain/Loss</option>
             </select>
             <button type="button" class="sort-direction-btn" onclick="toggleDirection()" title="Toggle sort direction">
                 {% if direction == 'asc' %}
@@ -56,6 +82,22 @@
                     </svg>
                 {% endif %}
             </button>
+            
+            <!-- View Toggle -->
+            <div class="ml-auto flex bg-gray-200 dark:bg-gray-700 rounded-lg p-1">
+                <button type="button" onclick="togglePortfolioView('tiles')" id="portfolioTilesBtn" class="flex items-center px-3 py-1 rounded-md text-sm font-medium transition-colors">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
+                    </svg>
+                    Tiles
+                </button>
+                <button type="button" onclick="togglePortfolioView('list')" id="portfolioListBtn" class="flex items-center px-3 py-1 rounded-md text-sm font-medium transition-colors">
+                    <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path>
+                    </svg>
+                    List
+                </button>
+            </div>
         </form>
         <script>
         function toggleDirection() {
@@ -63,7 +105,30 @@
             dirInput.value = dirInput.value === 'asc' ? 'desc' : 'asc';
             document.getElementById('sortForm').submit();
         }
+        
+        function togglePortfolioView(viewType) {
+            document.getElementById('portfolioViewInput').value = viewType;
+            document.getElementById('sortForm').submit();
+        }
+        
+        // Initialize view toggle buttons
+        document.addEventListener('DOMContentLoaded', function() {
+            const currentView = '{{ request.args.get("view", "tiles") }}';
+            const tilesBtn = document.getElementById('portfolioTilesBtn');
+            const listBtn = document.getElementById('portfolioListBtn');
+            
+            if (currentView === 'list') {
+                listBtn.classList.add('bg-white', 'dark:bg-gray-600', 'shadow-sm', 'text-gray-900', 'dark:text-white');
+                tilesBtn.classList.add('text-gray-500', 'dark:text-gray-400');
+            } else {
+                tilesBtn.classList.add('bg-white', 'dark:bg-gray-600', 'shadow-sm', 'text-gray-900', 'dark:text-white');
+                listBtn.classList.add('text-gray-500', 'dark:text-gray-400');
+            }
+        });
         </script>
+        
+        <!-- Tiles View -->
+        {% if request.args.get('view') != 'list' %}
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {% for holding in holdings %}
             <div class="themed-bg rounded-lg themed-shadow transition-all duration-300">
@@ -74,19 +139,13 @@
                     {% endif %}
                     <h3 class="text-lg font-bold themed-text mb-2">{{ holding.name }}</h3>
                     
-                    <!-- Bio Section -->
-                    {% if holding.spotify_info.bio %}
-                    <p class="themed-text-secondary text-sm mb-3">{{ holding.spotify_info.bio }}</p>
-                    {% endif %}
-                    
                     <!-- Portfolio Stats -->
                     <div class="space-y-1 text-sm">
                         <div class="themed-text-secondary">Shares: <span class="font-bold themed-text">{{ holding.shares or 0 }}</span></div>
-                        <div class="themed-text-secondary">Avg. Price: <span class="themed-text">${{ (holding.avg_price or 0) | round(2) }}</span></div>
-                        <div class="themed-text-secondary">Current Price: <span class="themed-text">${{ (holding.current_price or 0) | round(2) }}</span></div>
-                        <div class="themed-text-secondary">Value: <span class="themed-text">${{ (holding.value or 0) | round(2) }}</span></div>
-                        <div class="themed-text-secondary">Gain/Loss: <span class="font-bold {% if (holding.gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">${{ (holding.gain or 0) | round(2) }}</span></div>
-                        <div class="themed-text-secondary">Percent Gain/Loss: <span class="font-bold {% if (holding.percent_gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ (holding.percent_gain or 0) | round(2) }}%</span></div>
+                        <div class="themed-text-secondary">Avg. Price: <span class="themed-text">{{ (holding.avg_price or 0) | round(0) | int }} pts</span></div>
+                        <div class="themed-text-secondary">Current Price: <span class="themed-text">{{ (holding.current_price or 0) | round(0) | int }} pts</span></div>
+                        <div class="themed-text-secondary">Value: <span class="themed-text">{{ (holding.value or 0) | round(0) | int }} pts</span></div>
+                        <div class="themed-text-secondary">Gain/Loss: <span class="font-bold {% if (holding.gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ (holding.gain or 0) | round(0) | int }} pts</span></div>
                     </div>
                 </a>
                 
@@ -116,9 +175,199 @@
                 {% endif %}
             </div>
             {% else %}
-            <div class="text-center themed-text-secondary col-span-3">You do not own any stocks yet.</div>
+            <div class="text-center themed-text-secondary col-span-3">
+                {% if is_own_portfolio %}
+                    You do not own any stocks yet.
+                {% else %}
+                    {{ username }} has no holdings yet.
+                {% endif %}
+            </div>
             {% endfor %}
         </div>
+        {% else %}
+        
+        <!-- List View -->
+        {% if holdings %}
+        <div class="themed-bg rounded-lg themed-shadow overflow-hidden">
+            <!-- Header -->
+            <div class="themed-bg-tertiary px-6 py-3 border-b themed-border">
+                <div class="grid grid-cols-12 gap-4 text-sm font-medium themed-text-secondary">
+                    <div class="col-span-1"></div> <!-- Image column -->
+                    <div class="col-span-3">Artist</div>
+                    <div class="col-span-1">Shares</div>
+                    <div class="col-span-1">Avg. Price</div>
+                    <div class="col-span-1">Current Price</div>
+                    <div class="col-span-2">Value</div>
+                    <div class="col-span-2">Gain/Loss</div>
+                    <div class="col-span-1">Actions</div>
+                </div>
+            </div>
+            
+            <!-- Rows -->
+            <div class="divide-y themed-border">
+                {% for holding in holdings %}
+                <div class="px-6 py-4 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200">
+                    <div class="grid grid-cols-12 gap-4 items-center">
+                        <div class="col-span-1">
+                            {% if holding.image_url %}
+                                <img src="{{ holding.image_url }}" alt="{{ holding.name }}" class="w-12 h-12 object-cover rounded-md">
+                            {% else %}
+                                <div class="w-12 h-12 themed-bg-tertiary rounded-md flex items-center justify-center themed-text-secondary">
+                                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l6 6v7"></path>
+                                    </svg>
+                                </div>
+                            {% endif %}
+                        </div>
+                        <div class="col-span-3">
+                            <h3 class="text-lg font-semibold themed-text">{{ holding.name }}</h3>
+                            <div class="text-sm themed-text-tertiary">{{ holding.spotify_info.popularity or 0 }} popularity</div>
+                        </div>
+                        <div class="col-span-1">
+                            <span class="font-medium themed-text">{{ holding.shares or 0 }}</span>
+                        </div>
+                        <div class="col-span-1">
+                            <span class="themed-text">{{ (holding.avg_price or 0) | round(0) | int }} pts</span>
+                        </div>
+                        <div class="col-span-1">
+                            <span class="themed-text">{{ (holding.current_price or 0) | round(0) | int }} pts</span>
+                        </div>
+                        <div class="col-span-2">
+                            <span class="font-medium themed-text">{{ (holding.value or 0) | round(0) | int }} pts</span>
+                        </div>
+                        <div class="col-span-2">
+                            <span class="font-bold {% if (holding.gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">
+                                {{ (holding.gain or 0) | round(0) | int }} pts
+                            </span>
+                        </div>
+                        <div class="col-span-1">
+                            <a href="/artist/{{ holding.spotify_id }}" class="text-green-600 hover:text-green-700 text-sm font-medium">View</a>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <div class="themed-bg p-6 rounded-lg themed-shadow text-center">
+            <p class="themed-text-secondary">
+                {% if is_own_portfolio %}
+                    You do not own any stocks yet.
+                {% else %}
+                    {{ username }} has no holdings yet.
+                {% endif %}
+            </p>
+        </div>
+        {% endif %}
+        {% endif %}
     </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Portfolio History Chart
+    const ctx = document.getElementById('portfolioChart').getContext('2d');
+    
+    // Get current theme colors
+    const html = document.documentElement;
+    const isDarkTheme = html.classList.contains('dark-theme');
+    const textColor = isDarkTheme ? '#e5e7eb' : '#374151';
+    const gridColor = isDarkTheme ? '#374151' : '#e5e7eb';
+    
+    let portfolioChart;
+    
+    // Function to load portfolio history data
+    async function loadPortfolioHistory() {
+        try {
+            const userId = {% if is_own_portfolio %}{{ session.user_id }}{% else %}{{ user_id if user_id else 'null' }}{% endif %};
+            
+            if (!userId) return;
+            
+            const response = await fetch(`/portfolio_history/${userId}`);
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('Error loading portfolio history:', data.error);
+                return;
+            }
+            
+            // Create or update chart
+            if (portfolioChart) {
+                portfolioChart.destroy();
+            }
+            
+            portfolioChart = new Chart(ctx, {
+                type: 'line',
+                data: data,
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: true,
+                            labels: {
+                                color: textColor
+                            }
+                        },
+                        tooltip: {
+                            mode: 'index',
+                            intersect: false,
+                            callbacks: {
+                                label: function(context) {
+                                    return context.dataset.label + ': ' + Math.round(context.parsed.y) + ' pts';
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Date',
+                                color: textColor
+                            },
+                            ticks: {
+                                color: textColor
+                            },
+                            grid: {
+                                color: gridColor
+                            }
+                        },
+                        y: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Total Points',
+                                color: textColor
+                            },
+                            ticks: {
+                                color: textColor,
+                                callback: function(value) {
+                                    return Math.round(value) + ' pts';
+                                }
+                            },
+                            grid: {
+                                color: gridColor
+                            }
+                        }
+                    },
+                    interaction: {
+                        mode: 'nearest',
+                        axis: 'x',
+                        intersect: false
+                    }
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error loading portfolio history:', error);
+        }
+    }
+    
+    // Load initial data
+    loadPortfolioHistory();
+});
+</script>
 {% endblock %}

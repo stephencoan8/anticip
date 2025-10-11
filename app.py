@@ -20,7 +20,7 @@ client_secret = os.getenv("SPOTIFY_CLIENT_SECRET")
 sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=client_id, client_secret=client_secret))
 
 # Set up PostgreSQL connection pool
-db_pool = psycopg2.pool.SimpleConnectionPool(1, 20, dbname="antici_db", user="stephencoan", password="", host="localhost")
+db_pool = psycopg2.pool.SimpleConnectionPool(1, 20, dbname="anticip_db", user="stephencoan", password="", host="localhost")
 
 # Ensure tables exist
 conn = db_pool.getconn()
@@ -98,6 +98,14 @@ try:
             user_id INTEGER REFERENCES users(id),
             comment TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE TABLE IF NOT EXISTS portfolio_history (
+            id SERIAL PRIMARY KEY,
+            user_id INTEGER REFERENCES users(id),
+            total_points NUMERIC(12, 2),
+            points_invested NUMERIC(12, 2),
+            points_reserve NUMERIC(12, 2),
+            recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
     conn.commit()
@@ -286,6 +294,65 @@ def confirm_add_artist():
         cursor.close()
         db_pool.putconn(conn)
 
+@app.route('/delete_artist/<spotify_id>', methods=['POST'])
+def delete_artist(spotify_id):
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    # Check if user is admin
+    if not session.get('is_admin', False):
+        return "Access denied. Admin privileges required.", 403
+    
+    conn = db_pool.getconn()
+    try:
+        cursor = conn.cursor()
+        
+        # First check if artist exists
+        cursor.execute("SELECT id, name FROM artists WHERE spotify_id = %s", (spotify_id,))
+        artist = cursor.fetchone()
+        if not artist:
+            return "Artist not found", 404
+        
+        artist_id, artist_name = artist
+        
+        # Delete in correct order due to foreign key constraints
+        # 1. Delete transaction likes and comments first
+        cursor.execute("""
+            DELETE FROM transaction_likes 
+            WHERE transaction_id IN (
+                SELECT id FROM transactions WHERE artist_id = %s
+            )
+        """, (artist_id,))
+        
+        cursor.execute("""
+            DELETE FROM transaction_comments 
+            WHERE transaction_id IN (
+                SELECT id FROM transactions WHERE artist_id = %s
+            )
+        """, (artist_id,))
+        
+        # 2. Delete transactions
+        cursor.execute("DELETE FROM transactions WHERE artist_id = %s", (artist_id,))
+        
+        # 3. Delete user bets
+        cursor.execute("DELETE FROM bets WHERE artist_id = %s", (artist_id,))
+        
+        # 4. Delete price history
+        cursor.execute("DELETE FROM artist_history WHERE spotify_id = %s", (spotify_id,))
+        
+        # 5. Finally delete the artist
+        cursor.execute("DELETE FROM artists WHERE spotify_id = %s", (spotify_id,))
+        
+        conn.commit()
+        return redirect(url_for('list_artists'))
+        
+    except Exception as e:
+        conn.rollback()
+        return f"Error deleting artist: {str(e)}", 500
+    finally:
+        cursor.close()
+        db_pool.putconn(conn)
+
 @app.route('/login', methods=['GET', 'POST'])
 def login():
     if request.method == 'POST':
@@ -294,10 +361,12 @@ def login():
         conn = db_pool.getconn()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, password FROM users WHERE username = %s", (username,))
+            cursor.execute("SELECT id, password, username, is_admin FROM users WHERE username = %s", (username,))
             user = cursor.fetchone()
             if user and bcrypt.checkpw(password, user[1].encode('utf-8')):
                 session['user_id'] = user[0]
+                session['username'] = user[2]
+                session['is_admin'] = user[3] if user[3] is not None else False
                 return redirect(url_for('list_artists'))  # Changed from 'artists' to 'list_artists'
             else:
                 return render_template('login.html', error="Invalid username or password")
@@ -322,6 +391,8 @@ def register():
             user_id = cursor.fetchone()[0]
             conn.commit()
             session['user_id'] = user_id
+            session['username'] = username
+            session['is_admin'] = False  # New users are not admin by default
             return redirect(url_for('list_artists'))  # Changed from 'artists' to 'list_artists'
         except Exception as e:
             conn.rollback()
@@ -334,6 +405,8 @@ def register():
 @app.route('/logout')
 def logout():
     session.pop('user_id', None)
+    session.pop('username', None)
+    session.pop('is_admin', None)
     return redirect(url_for('login'))
 
 @app.route('/refresh_data', methods=['POST'])
@@ -392,6 +465,9 @@ def refresh_data():
         
         conn.commit()
         print(f"Successfully updated {updated_count} artists")
+        
+        # Record portfolio history for all users after data refresh
+        record_portfolio_history()
         
     except Exception as e:
         conn.rollback()
@@ -522,23 +598,41 @@ def sell_artist(spotify_id):
         db_pool.putconn(conn)
 
 @app.route('/portfolio')
-def portfolio():
+@app.route('/user/<int:user_id>/portfolio')
+def portfolio(user_id=None):
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    user_id = session['user_id']
+    # Determine if viewing own portfolio or someone else's
+    if user_id is None:
+        user_id = session['user_id']
+        is_own_portfolio = True
+    else:
+        is_own_portfolio = (user_id == session['user_id'])
+    
     order = request.args.get('order', 'alphabetical')
     direction = request.args.get('direction', 'asc')
+    view = request.args.get('view', 'tile')
     
     conn = db_pool.getconn()
     try:
         cursor = conn.cursor()
+        
+        # Get the user's username and basic info
+        cursor.execute("SELECT username FROM users WHERE id = %s", (user_id,))
+        user_result = cursor.fetchone()
+        if not user_result:
+            return "User not found", 404
+        username = user_result[0]
         # Get user's balance
         cursor.execute("SELECT balance FROM users WHERE id = %s", (user_id,))
         balance_result = cursor.fetchone()
         if not balance_result or balance_result[0] is None:
             return "User balance not found", 404
-        balance = float(balance_result[0])
+        actual_balance = float(balance_result[0])
+        
+        # For display purposes, only show balance for own portfolio
+        balance = actual_balance if is_own_portfolio else 0.0
         
         # Get all user's holdings with current prices
         cursor.execute("""
@@ -638,7 +732,7 @@ def portfolio():
                 holdings.sort(key=lambda x: x['percent_gain'], reverse=(direction == 'desc'))
             
             gain = current_value - total_invested
-            net_worth = balance + current_value
+            net_worth = actual_balance + current_value  # Always calculate total net worth
             
             # Calculate percent of holdings that are profitable
             profitable_holdings = sum(1 for h in holdings if h['gain'] > 0)
@@ -647,7 +741,7 @@ def portfolio():
             total_invested = 0.0
             current_value = 0.0
             gain = 0.0
-            net_worth = balance
+            net_worth = actual_balance  # Always include balance in total
             percent_winning = 0.0
         
         return render_template('portfolio.html',
@@ -658,7 +752,10 @@ def portfolio():
                             net_worth=net_worth,
                             percent_winning=percent_winning,
                             order=order,
-                            direction=direction)
+                            direction=direction,
+                            view=view,
+                            username=username,
+                            is_own_portfolio=is_own_portfolio)
     except Exception as e:
         return f"Database error: {str(e)}", 500
     finally:
@@ -877,136 +974,6 @@ def unfollow_user(followed_id):
         return redirect(url_for('following'))
     except Exception as e:
         conn.rollback()
-        return f"Database error: {str(e)}", 500
-    finally:
-        cursor.close()
-        db_pool.putconn(conn)
-
-@app.route('/user/<int:user_id>/portfolio')
-def view_user_portfolio(user_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
-    conn = db_pool.getconn()
-    try:
-        cursor = conn.cursor()
-        
-        # Get the user's username
-        cursor.execute("SELECT username FROM users WHERE id = %s", (user_id,))
-        user_result = cursor.fetchone()
-        if not user_result:
-            return "User not found", 404
-        username = user_result[0]
-        
-        # Get user's balance
-        cursor.execute("SELECT balance FROM users WHERE id = %s", (user_id,))
-        balance = cursor.fetchone()[0]
-        
-        # Get all user's holdings with current prices
-        cursor.execute("""
-            WITH latest_prices AS (
-                SELECT DISTINCT ON (spotify_id) spotify_id, price
-                FROM artist_history
-                ORDER BY spotify_id, recorded_at DESC
-            )
-            SELECT 
-                a.name,
-                b.shares,
-                b.avg_price,
-                lp.price as current_price,
-                a.spotify_id
-            FROM bets b
-            JOIN artists a ON b.artist_id = a.id
-            JOIN latest_prices lp ON a.spotify_id = lp.spotify_id
-            WHERE b.user_id = %s
-        """, (user_id,))
-        
-        holdings = cursor.fetchall()
-        
-        # Process holdings data to include Spotify info
-        processed_holdings = []
-        if holdings:
-            for h in holdings:
-                name = h[0]
-                shares = float(h[1]) if h[1] is not None else 0
-                avg_price = float(h[2]) if h[2] is not None else 0
-                current_price = float(h[3]) if h[3] is not None else 0
-                spotify_id = h[4]
-                
-                # Calculate values for this holding
-                value = shares * current_price
-                cost = shares * avg_price
-                gain = value - cost
-                percent_gain = ((gain / cost) * 100) if cost > 0 else 0
-                
-                # Get image URL for this artist
-                cursor.execute("SELECT image_url FROM artists WHERE spotify_id = %s", (spotify_id,))
-                image_result = cursor.fetchone()
-                image_url = image_result[0] if image_result else None
-                
-                # Get local Spotify data
-                cursor.execute("SELECT followers, popularity, genres, top_tracks FROM spotify_data WHERE spotify_id = %s", (spotify_id,))
-                spotify_row = cursor.fetchone()
-                if spotify_row:
-                    # JSONB fields are already parsed by psycopg2, no need for json.loads()
-                    top_tracks_data = spotify_row[3] if spotify_row[3] else []
-                    spotify_info = {
-                        'followers': spotify_row[0] or 0,
-                        'popularity': spotify_row[1] or 0,
-                        'genres': spotify_row[2] or [],
-                        'top_tracks': top_tracks_data[:3]  # Top 3 for portfolio
-                    }
-                else:
-                    spotify_info = {
-                        'followers': 0,
-                        'popularity': 0,
-                        'genres': [],
-                        'top_tracks': []
-                    }
-                
-                # Create holding object
-                holding = {
-                    'name': name,
-                    'shares': shares,
-                    'avg_price': avg_price,
-                    'current_price': current_price,
-                    'value': value,
-                    'gain': gain,
-                    'percent_gain': percent_gain,
-                    'spotify_id': spotify_id,
-                    'image_url': image_url,
-                    'spotify_info': spotify_info
-                }
-                processed_holdings.append(holding)
-        
-        # Calculate portfolio stats
-        if processed_holdings:
-            total_invested = sum(h['cost'] if 'cost' in h else h['shares'] * h['avg_price'] for h in processed_holdings)
-            current_value = sum(h['value'] for h in processed_holdings) 
-            gain = current_value - total_invested
-            net_worth = balance + current_value
-            
-            # Calculate percent of holdings that are profitable
-            profitable_holdings = sum(1 for h in processed_holdings if h['gain'] > 0)
-            percent_winning = (profitable_holdings / len(processed_holdings) * 100)
-        else:
-            total_invested = 0
-            current_value = 0
-            gain = 0
-            net_worth = balance
-            percent_winning = 0
-        
-        return render_template('user_portfolio.html',
-                            username=username,
-                            user_id=user_id,
-                            holdings=processed_holdings,
-                            balance=balance,
-                            total_invested=total_invested,
-                            gain=gain,
-                            net_worth=net_worth,
-                            percent_winning=percent_winning,
-                            is_own_portfolio=False)
-    except Exception as e:
         return f"Database error: {str(e)}", 500
     finally:
         cursor.close()
@@ -1236,6 +1203,143 @@ def get_comments(transaction_id):
     finally:
         cursor.close()
         db_pool.putconn(conn)
+
+@app.route('/portfolio_history/<int:user_id>')
+def get_portfolio_history(user_id):
+    """Get portfolio history data for charting"""
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    conn = db_pool.getconn()
+    try:
+        cursor = conn.cursor()
+        
+        # Get portfolio history for the last 30 days
+        cursor.execute("""
+            SELECT 
+                total_points,
+                points_invested,
+                points_reserve,
+                recorded_at
+            FROM portfolio_history
+            WHERE user_id = %s 
+                AND recorded_at >= NOW() - INTERVAL '30 days'
+            ORDER BY recorded_at ASC
+        """, (user_id,))
+        
+        history_data = cursor.fetchall()
+        
+        # Format data for Chart.js
+        chart_data = {
+            'labels': [],
+            'datasets': [{
+                'label': 'Total Points',
+                'data': [],
+                'borderColor': 'rgb(34, 197, 94)',
+                'backgroundColor': 'rgba(34, 197, 94, 0.1)',
+                'fill': True,
+                'tension': 0.4
+            }]
+        }
+        
+        for row in history_data:
+            total_points = float(row[0])
+            recorded_at = row[3]
+            
+            # Format date for display
+            chart_data['labels'].append(recorded_at.strftime('%m/%d'))
+            chart_data['datasets'][0]['data'].append(total_points)
+        
+        return chart_data
+        
+    except Exception as e:
+        return {"error": str(e)}, 500
+    finally:
+        cursor.close()
+        db_pool.putconn(conn)
+
+def record_portfolio_history():
+    """Record current portfolio values for all users"""
+    conn = db_pool.getconn()
+    try:
+        cursor = conn.cursor()
+        
+        # Get all users
+        cursor.execute("SELECT id FROM users")
+        user_ids = [row[0] for row in cursor.fetchall()]
+        print(f"📊 Recording portfolio history for {len(user_ids)} users")
+        
+        for user_id in user_ids:
+            try:
+                # Calculate current portfolio values for this user
+                
+                # Get user's balance
+                cursor.execute("SELECT balance FROM users WHERE id = %s", (user_id,))
+                balance_result = cursor.fetchone()
+                balance = float(balance_result[0]) if balance_result and balance_result[0] is not None else 0.0
+                
+                # Get user's holdings with current prices
+                cursor.execute("""
+                    WITH latest_prices AS (
+                        SELECT DISTINCT ON (spotify_id) spotify_id, price
+                        FROM artist_history
+                        ORDER BY spotify_id, recorded_at DESC
+                    )
+                    SELECT 
+                        b.shares,
+                        b.avg_price,
+                        lp.price as current_price
+                    FROM bets b
+                    JOIN artists a ON b.artist_id = a.id
+                    JOIN latest_prices lp ON a.spotify_id = lp.spotify_id
+                    WHERE b.user_id = %s
+                """, (user_id,))
+                
+                holdings = cursor.fetchall()
+                
+                # Calculate portfolio totals
+                total_invested = 0.0
+                current_value = 0.0
+                
+                for holding in holdings:
+                    shares = float(holding[0]) if holding[0] is not None else 0
+                    avg_price = float(holding[1]) if holding[1] is not None else 0
+                    current_price = float(holding[2]) if holding[2] is not None else 0
+                    
+                    total_invested += shares * avg_price
+                    current_value += shares * current_price
+                
+                total_points = balance + current_value
+                
+                print(f"  User {user_id}: Balance={balance}, Invested={current_value}, Total={total_points}")
+                
+                # Record the portfolio snapshot
+                cursor.execute("""
+                    INSERT INTO portfolio_history (user_id, total_points, points_invested, points_reserve)
+                    VALUES (%s, %s, %s, %s)
+                """, (user_id, total_points, current_value, balance))
+                
+            except Exception as e:
+                print(f"Error recording portfolio history for user {user_id}: {e}")
+        
+        conn.commit()
+        print(f"✅ Recorded portfolio history for {len(user_ids)} users")
+        
+    except Exception as e:
+        print(f"Error in record_portfolio_history: {e}")
+        conn.rollback()
+    finally:
+        cursor.close()
+        db_pool.putconn(conn)
+
+@app.route('/test_portfolio_history')
+def test_portfolio_history():
+    """Test route to manually record portfolio history"""
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    record_portfolio_history()
+    return "Portfolio history recorded successfully! <a href='/portfolio'>View Portfolio</a>"
 
 def main():
     # Initialize Spotify API client and database connection

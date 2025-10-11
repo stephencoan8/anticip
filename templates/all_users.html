@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}All Users - Antici{% endblock %}
+{% block title %}All Users - anticip{% endblock %}
 
 {% block content %}
 <div class="max-w-4xl mx-auto">
@@ -19,7 +19,7 @@
                             <div>
                                 <div class="themed-text font-medium">{{ user.username }}</div>
                                 <div class="themed-text-secondary text-sm">
-                                    <a href="{{ url_for('view_user_portfolio', user_id=user.id) }}" class="text-green-600 hover:text-green-700">View Portfolio</a>
+                                    <a href="{{ url_for('portfolio', user_id=user.id) }}" class="text-green-600 hover:text-green-700">View Portfolio</a>
                                 </div>
                             </div>
                         </div>

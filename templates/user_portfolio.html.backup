@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}{{ username }}'s Portfolio - Antici{% endblock %}
+{% block title %}{{ username }}'s Portfolio - anticip{% endblock %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto">
@@ -10,22 +10,18 @@
 
     <div class="themed-bg p-6 rounded-lg themed-shadow mb-6 transition-colors duration-300">
         <h2 class="text-xl font-semibold themed-text mb-4">Portfolio Summary</h2>
-        <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div class="themed-bg-tertiary p-4 rounded themed-shadow transition-colors duration-300">
-                <div class="themed-text-secondary">Total Net Worth</div>
-                <div class="text-2xl font-bold themed-text">${{ (net_worth or 0) | round(2) }}</div>
+                <div class="themed-text-secondary">Total Points</div>
+                <div class="text-2xl font-bold themed-text">{{ (net_worth or 0) | round(0) | int }}</div>
             </div>
             <div class="themed-bg-tertiary p-4 rounded themed-shadow transition-colors duration-300">
-                <div class="themed-text-secondary">Total Invested</div>
-                <div class="text-2xl font-bold themed-text">${{ (total_invested or 0) | round(2) }}</div>
+                <div class="themed-text-secondary">Points Invested</div>
+                <div class="text-2xl font-bold themed-text">{{ (total_invested or 0) | round(0) | int }}</div>
             </div>
             <div class="themed-bg-tertiary p-4 rounded themed-shadow transition-colors duration-300">
-                <div class="themed-text-secondary">Overall Gain/Loss</div>
-                <div class="text-2xl font-bold {% if (gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">${{ (gain or 0) | round(2) }}</div>
-            </div>
-            <div class="themed-bg-tertiary p-4 rounded themed-shadow transition-colors duration-300">
-                <div class="themed-text-secondary">Percent Winning</div>
-                <div class="text-2xl font-bold themed-text">{{ (percent_winning or 0) | round(2) }}%</div>
+                <div class="themed-text-secondary">Gain/Loss</div>
+                <div class="text-2xl font-bold {% if (gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ (gain or 0) | round(0) | int }} pts</div>
             </div>
         </div>
     </div>
@@ -51,11 +47,10 @@
                 <!-- Portfolio Stats -->
                 <div class="space-y-1 text-sm">
                     <div class="themed-text-secondary">Shares: <span class="font-bold themed-text">{{ holding.shares or 0 }}</span></div>
-                    <div class="themed-text-secondary">Avg. Price: <span class="themed-text">${{ (holding.avg_price or 0) | round(2) }}</span></div>
-                    <div class="themed-text-secondary">Current Price: <span class="themed-text">${{ (holding.current_price or 0) | round(2) }}</span></div>
-                    <div class="themed-text-secondary">Value: <span class="themed-text">${{ (holding.value or 0) | round(2) }}</span></div>
-                    <div class="themed-text-secondary">Gain/Loss: <span class="font-bold {% if (holding.gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">${{ (holding.gain or 0) | round(2) }}</span></div>
-                    <div class="themed-text-secondary">Percent Gain/Loss: <span class="font-bold {% if (holding.percent_gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ (holding.percent_gain or 0) | round(2) }}%</span></div>
+                    <div class="themed-text-secondary">Avg. Price: <span class="themed-text">{{ (holding.avg_price or 0) | round(0) | int }} pts</span></div>
+                    <div class="themed-text-secondary">Current Price: <span class="themed-text">{{ (holding.current_price or 0) | round(0) | int }} pts</span></div>
+                    <div class="themed-text-secondary">Value: <span class="themed-text">{{ (holding.value or 0) | round(0) | int }} pts</span></div>
+                    <div class="themed-text-secondary">Gain/Loss: <span class="font-bold {% if (holding.gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ (holding.gain or 0) | round(0) | int }} pts</span></div>
                 </div>
             </a>
             

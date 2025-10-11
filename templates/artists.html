@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Artists - Antici{% endblock %}
+{% block title %}Artists - anticip{% endblock %}
 
 {% block content %}
 <div class="max-w-7xl mx-auto">
@@ -14,10 +14,12 @@
         </form>
     </div>
     <h2 class="text-xl font-semibold mb-4 themed-text">Artists</h2>
-    <!-- Sort dropdown and arrow for artists -->
+    <!-- Sort dropdown, view toggle, and direction button -->
     <form method="get" id="artistSortForm" class="flex items-center gap-3 mb-6">
         <label for="order" class="font-medium themed-text text-sm">Sort by:</label>
         <input type="hidden" name="direction" id="artistDirectionInput" value="{{ direction if direction else 'asc' }}">
+        <input type="hidden" name="view" id="viewInput" value="{{ request.args.get('view', 'tiles') }}">
+        {% if search_query %}<input type="hidden" name="search" value="{{ search_query }}">{% endif %}
         <select name="order" id="order" class="modern-dropdown" onchange="document.getElementById('artistSortForm').submit()">
             <option value="alphabetical" {% if order == 'alphabetical' or not order %}selected{% endif %}>Alphabetical</option>
             <option value="popularity" {% if order == 'popularity' %}selected{% endif %}>Popularity</option>
@@ -33,6 +35,22 @@
                 </svg>
             {% endif %}
         </button>
+        
+        <!-- View Toggle -->
+        <div class="ml-auto flex bg-gray-200 dark:bg-gray-700 rounded-lg p-1">
+            <button type="button" onclick="toggleView('tiles')" id="tilesBtn" class="flex items-center px-3 py-1 rounded-md text-sm font-medium transition-colors">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"></path>
+                </svg>
+                Tiles
+            </button>
+            <button type="button" onclick="toggleView('list')" id="listBtn" class="flex items-center px-3 py-1 rounded-md text-sm font-medium transition-colors">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 10h16M4 14h16M4 18h16"></path>
+                </svg>
+                List
+            </button>
+        </div>
     </form>
         <script>
         function toggleArtistDirection() {
@@ -40,7 +58,30 @@
             dirInput.value = dirInput.value === 'asc' ? 'desc' : 'asc';
             document.getElementById('artistSortForm').submit();
         }
+        
+        function toggleView(viewType) {
+            document.getElementById('viewInput').value = viewType;
+            document.getElementById('artistSortForm').submit();
+        }
+        
+        // Initialize view toggle buttons
+        document.addEventListener('DOMContentLoaded', function() {
+            const currentView = '{{ request.args.get("view", "tiles") }}';
+            const tilesBtn = document.getElementById('tilesBtn');
+            const listBtn = document.getElementById('listBtn');
+            
+            if (currentView === 'list') {
+                listBtn.classList.add('bg-white', 'dark:bg-gray-600', 'shadow-sm', 'text-gray-900', 'dark:text-white');
+                tilesBtn.classList.add('text-gray-500', 'dark:text-gray-400');
+            } else {
+                tilesBtn.classList.add('bg-white', 'dark:bg-gray-600', 'shadow-sm', 'text-gray-900', 'dark:text-white');
+                listBtn.classList.add('text-gray-500', 'dark:text-gray-400');
+            }
+        });
         </script>
+        
+        <!-- Tiles View -->
+        {% if request.args.get('view') != 'list' %}
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {% if records %}
                 {% for spotify_id, name, popularity, price, recorded_at, image_url in records %}
@@ -53,7 +94,7 @@
                         {% endif %}
                         <h2 class="text-xl font-semibold themed-text">{{ name }}</h2>
                         <p class="themed-text-secondary">Popularity: {{ popularity }}</p>
-                        <p class="themed-text-secondary">Stock Price: ${{ price | float | round(2) }}</p>
+                        <p class="themed-text-secondary">Stock Price: {{ price | float | round(0) | int }} pts</p>
                         <p class="themed-text-tertiary text-sm">Last Updated: {{ recorded_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
                     </div>
                 </a>
@@ -62,6 +103,63 @@
                 <p class="text-center themed-text-secondary">No artists found</p>
             {% endif %}
         </div>
+        {% else %}
+        
+        <!-- List View -->
+        {% if records %}
+        <div class="themed-bg rounded-lg themed-shadow overflow-hidden">
+            <!-- Header -->
+            <div class="themed-bg-tertiary px-6 py-3 border-b themed-border">
+                <div class="grid grid-cols-12 gap-4 text-sm font-medium themed-text-secondary">
+                    <div class="col-span-1"></div> <!-- Image column -->
+                    <div class="col-span-4">Artist</div>
+                    <div class="col-span-2">Popularity</div>
+                    <div class="col-span-2">Stock Price</div>
+                    <div class="col-span-3">Last Updated</div>
+                </div>
+            </div>
+            
+            <!-- Rows -->
+            <div class="divide-y themed-border">
+                {% for spotify_id, name, popularity, price, recorded_at, image_url in records %}
+                <a href="/artist/{{ spotify_id }}" class="block hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors duration-200">
+                    <div class="px-6 py-4">
+                        <div class="grid grid-cols-12 gap-4 items-center">
+                            <div class="col-span-1">
+                                {% if image_url %}
+                                    <img src="{{ image_url }}" alt="{{ name }}" class="w-12 h-12 object-cover rounded-md">
+                                {% else %}
+                                    <div class="w-12 h-12 themed-bg-tertiary rounded-md flex items-center justify-center themed-text-secondary">
+                                        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l6 6v7"></path>
+                                        </svg>
+                                    </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-span-4">
+                                <h3 class="text-lg font-semibold themed-text">{{ name }}</h3>
+                            </div>
+                            <div class="col-span-2">
+                                <span class="themed-text">{{ popularity }}</span>
+                            </div>
+                            <div class="col-span-2">
+                                <span class="font-medium themed-text">{{ price | float | round(0) | int }} pts</span>
+                            </div>
+                            <div class="col-span-3">
+                                <span class="themed-text-tertiary text-sm">{{ recorded_at.strftime('%Y-%m-%d %H:%M:%S') }}</span>
+                            </div>
+                        </div>
+                    </div>
+                </a>
+                {% endfor %}
+            </div>
+        </div>
+        {% else %}
+        <div class="themed-bg p-6 rounded-lg themed-shadow text-center">
+            <p class="themed-text-secondary">No artists found</p>
+        </div>
+        {% endif %}
+        {% endif %}
     </div>
     <form action="/refresh_data" method="POST" class="fixed bottom-6 right-6">
         <button type="submit" class="bg-green-600 text-white px-4 py-2 rounded-full shadow-lg hover:bg-green-700 flex items-center">
