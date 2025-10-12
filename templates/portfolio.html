@@ -41,13 +41,25 @@
         
         <!-- Portfolio History Chart -->
         <div class="themed-bg p-6 rounded-lg themed-shadow mb-6 transition-colors duration-300">
-            <h2 class="text-xl font-semibold mb-4 themed-text">
-                {% if is_own_portfolio %}
-                    Your Portfolio Performance
-                {% else %}
-                    {{ username }}'s Portfolio Performance
-                {% endif %}
-            </h2>
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold themed-text">
+                    {% if is_own_portfolio %}
+                        Your Portfolio Performance
+                    {% else %}
+                        {{ username }}'s Portfolio Performance
+                    {% endif %}
+                </h2>
+                
+                <!-- Time Range Buttons -->
+                <div class="flex gap-2">
+                    <button class="time-range-btn px-3 py-1 text-sm rounded-md themed-bg-tertiary themed-text hover:opacity-80 transition-colors" data-range="1week">1W</button>
+                    <button class="time-range-btn px-3 py-1 text-sm rounded-md themed-bg-tertiary themed-text hover:opacity-80 transition-colors active" data-range="1month">1M</button>
+                    <button class="time-range-btn px-3 py-1 text-sm rounded-md themed-bg-tertiary themed-text hover:opacity-80 transition-colors" data-range="3months">3M</button>
+                    <button class="time-range-btn px-3 py-1 text-sm rounded-md themed-bg-tertiary themed-text hover:opacity-80 transition-colors" data-range="1year">1Y</button>
+                    <button class="time-range-btn px-3 py-1 text-sm rounded-md themed-bg-tertiary themed-text hover:opacity-80 transition-colors" data-range="all">All</button>
+                </div>
+            </div>
+            
             <div class="h-64">
                 <canvas id="portfolioChart"></canvas>
             </div>
@@ -263,7 +275,18 @@
     </div>
 </div>
 
+<style>
+        .time-range-btn.active {
+            background-color: #10b981 !important;
+            color: white !important;
+        }
+        .time-range-btn.active:hover {
+            background-color: #059669 !important;
+        }
+    </style>
+
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 <script>
 document.addEventListener('DOMContentLoaded', function() {
     // Portfolio History Chart
@@ -276,15 +299,16 @@ document.addEventListener('DOMContentLoaded', function() {
     const gridColor = isDarkTheme ? '#374151' : '#e5e7eb';
     
     let portfolioChart;
+    let currentRange = '1month';
     
     // Function to load portfolio history data
-    async function loadPortfolioHistory() {
+    async function loadPortfolioHistory(range = '1month') {
         try {
             const userId = {% if is_own_portfolio %}{{ session.user_id }}{% else %}{{ user_id if user_id else 'null' }}{% endif %};
             
             if (!userId) return;
             
-            const response = await fetch(`/portfolio_history/${userId}`);
+            const response = await fetch(`/portfolio_history/${userId}?range=${range}`);
             const data = await response.json();
             
             if (data.error) {
@@ -322,6 +346,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     },
                     scales: {
                         x: {
+                            type: 'time',
+                            time: {
+                                displayFormats: {
+                                    day: 'MMM dd',
+                                    week: 'MMM dd',
+                                    month: 'MMM yyyy'
+                                }
+                            },
                             display: true,
                             title: {
                                 display: true,
@@ -329,7 +361,8 @@ document.addEventListener('DOMContentLoaded', function() {
                                 color: textColor
                             },
                             ticks: {
-                                color: textColor
+                                color: textColor,
+                                maxTicksLimit: 8
                             },
                             grid: {
                                 color: gridColor
@@ -366,8 +399,25 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
+    // Time range button handlers
+    const timeRangeButtons = document.querySelectorAll('.time-range-btn');
+    timeRangeButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            // Remove active class from all buttons
+            timeRangeButtons.forEach(btn => btn.classList.remove('active'));
+            
+            // Add active class to clicked button
+            this.classList.add('active');
+            
+            // Load data for selected range
+            const range = this.dataset.range;
+            currentRange = range;
+            loadPortfolioHistory(range);
+        });
+    });
+    
     // Load initial data
-    loadPortfolioHistory();
+    loadPortfolioHistory(currentRange);
 });
 </script>
 {% endblock %}

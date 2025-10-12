@@ -4,6 +4,7 @@
 
 {% block extra_head %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 {% endblock %}
 
 {% block content %}
@@ -164,7 +165,19 @@
 
         <!-- Price Chart -->
         <div class="themed-bg p-6 rounded-lg themed-shadow transition-colors duration-300">
-            <h2 class="text-xl font-semibold themed-text mb-4">Stock Price History</h2>
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-semibold themed-text">Stock Price History</h2>
+                
+                <!-- Time Range Buttons -->
+                <div class="flex gap-2">
+                    <button class="price-time-range-btn px-3 py-1 text-sm rounded-md themed-bg-tertiary themed-text hover:opacity-80 transition-colors" data-range="1week">1W</button>
+                    <button class="price-time-range-btn px-3 py-1 text-sm rounded-md themed-bg-tertiary themed-text hover:opacity-80 transition-colors active" data-range="1month">1M</button>
+                    <button class="price-time-range-btn px-3 py-1 text-sm rounded-md themed-bg-tertiary themed-text hover:opacity-80 transition-colors" data-range="3months">3M</button>
+                    <button class="price-time-range-btn px-3 py-1 text-sm rounded-md themed-bg-tertiary themed-text hover:opacity-80 transition-colors" data-range="1year">1Y</button>
+                    <button class="price-time-range-btn px-3 py-1 text-sm rounded-md themed-bg-tertiary themed-text hover:opacity-80 transition-colors" data-range="all">All</button>
+                </div>
+            </div>
+            
             <canvas id="priceChart" width="400" height="200"></canvas>
         </div>
     </div>
@@ -228,78 +241,122 @@
 </div>
 
 <script>
+    // Add CSS for active button state
+    const style = document.createElement('style');
+    style.textContent = `
+        .price-time-range-btn.active {
+            background-color: #10b981 !important;
+            color: white !important;
+        }
+        .price-time-range-btn.active:hover {
+            background-color: #059669 !important;
+        }
+    `;
+    document.head.appendChild(style);
+    
     // Price chart
     const ctx = document.getElementById('priceChart').getContext('2d');
-    const history = {{ history|tojson|safe }};
-    const chartData = history.map(item => ({
-        x: item[0],
-        y: item[1]
-    }));
     
     // Get theme colors
     const isDarkTheme = document.documentElement.classList.contains('dark-theme');
     const textColor = isDarkTheme ? '#ffffff' : '#111827';
     const gridColor = isDarkTheme ? '#374151' : '#e5e7eb';
     
-    new Chart(ctx, {
-        type: 'line',
-        data: {
-            datasets: [{
-                label: '{{ artist[0] }}',
-                data: chartData,
-                borderColor: '#10b981',
-                backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                tension: 0.2,
-                fill: true
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: {
-                    labels: {
-                        color: textColor
-                    }
-                }
-            },
-            scales: {
-                x: { 
-                    title: { 
-                        display: true, 
-                        text: 'Date',
-                        color: textColor
-                    },
-                    ticks: {
-                        color: textColor,
-                        callback: function(value, index, values) {
-                            // Format date as MM/DD/YY
-                            const date = new Date(this.getLabelForValue(value));
-                            const month = String(date.getMonth() + 1).padStart(2, '0');
-                            const day = String(date.getDate()).padStart(2, '0');
-                            const year = String(date.getFullYear()).slice(-2);
-                            return `${month}/${day}/${year}`;
+    let priceChart;
+    let currentRange = '1month';
+    
+    // Function to load artist price history
+    async function loadPriceHistory(range = '1month') {
+        try {
+            const response = await fetch(`/api/artist_history/{{ spotify_id | urlencode }}?range=${range}`);
+            const data = await response.json();
+            
+            if (data.error) {
+                console.error('Error loading price history:', data.error);
+                return;
+            }
+            
+            // Create or update chart
+            if (priceChart) {
+                priceChart.destroy();
+            }
+            
+            priceChart = new Chart(ctx, {
+                type: 'line',
+                data: data,
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            labels: {
+                                color: textColor
+                            }
                         }
                     },
-                    grid: {
-                        color: gridColor
-                    }
-                },
-                y: { 
-                    title: { 
-                        display: true, 
-                        text: 'Price (pts)',
-                        color: textColor
-                    },
-                    ticks: {
-                        color: textColor
-                    },
-                    grid: {
-                        color: gridColor
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                displayFormats: {
+                                    day: 'MMM dd',
+                                    week: 'MMM dd',
+                                    month: 'MMM yyyy'
+                                }
+                            },
+                            title: {
+                                display: true,
+                                text: 'Date',
+                                color: textColor
+                            },
+                            ticks: {
+                                color: textColor,
+                                maxTicksLimit: 8
+                            },
+                            grid: {
+                                color: gridColor
+                            }
+                        },
+                        y: {
+                            title: {
+                                display: true,
+                                text: 'Price (pts)',
+                                color: textColor
+                            },
+                            ticks: {
+                                color: textColor
+                            },
+                            grid: {
+                                color: gridColor
+                            }
+                        }
                     }
                 }
-            }
+            });
+            
+        } catch (error) {
+            console.error('Error loading price history:', error);
         }
+    }
+    
+    // Time range button handlers
+    const priceTimeRangeButtons = document.querySelectorAll('.price-time-range-btn');
+    priceTimeRangeButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            // Remove active class from all buttons
+            priceTimeRangeButtons.forEach(btn => btn.classList.remove('active'));
+            
+            // Add active class to clicked button
+            this.classList.add('active');
+            
+            // Load data for selected range
+            const range = this.dataset.range;
+            currentRange = range;
+            loadPriceHistory(range);
+        });
     });
+    
+    // Load initial data
+    loadPriceHistory(currentRange);
     
     // Modal logic
     const buyBtn = document.getElementById('buyBtn');

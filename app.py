@@ -243,6 +243,7 @@ def artist_detail(spotify_id):
         # For artist detail, just pass order to template for dropdown (no sorting needed)
         return render_template('artist_detail.html', 
                              artist=(name, image_url), 
+                             spotify_id=spotify_id,
                              history=history, 
                              holdings=holdings, 
                              current_price=current_price, 
@@ -1210,28 +1211,53 @@ def get_portfolio_history(user_id):
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
+    # Get time range parameter (default to 30 days)
+    time_range = request.args.get('range', '1month')
+    
+    # Map time ranges to SQL intervals
+    range_intervals = {
+        '1week': '7 days',
+        '1month': '30 days', 
+        '3months': '90 days',
+        '1year': '365 days',
+        'all': '10 years'  # Effectively all data
+    }
+    
+    interval = range_intervals.get(time_range, '30 days')
+    
     conn = db_pool.getconn()
     try:
         cursor = conn.cursor()
         
-        # Get portfolio history for the last 30 days
-        cursor.execute("""
-            SELECT 
-                total_points,
-                points_invested,
-                points_reserve,
-                recorded_at
-            FROM portfolio_history
-            WHERE user_id = %s 
-                AND recorded_at >= NOW() - INTERVAL '30 days'
-            ORDER BY recorded_at ASC
-        """, (user_id,))
+        # Get portfolio history for the specified time range
+        if time_range == 'all':
+            cursor.execute("""
+                SELECT 
+                    total_points,
+                    points_invested,
+                    points_reserve,
+                    recorded_at
+                FROM portfolio_history
+                WHERE user_id = %s 
+                ORDER BY recorded_at ASC
+            """, (user_id,))
+        else:
+            cursor.execute("""
+                SELECT 
+                    total_points,
+                    points_invested,
+                    points_reserve,
+                    recorded_at
+                FROM portfolio_history
+                WHERE user_id = %s 
+                    AND recorded_at >= NOW() - INTERVAL %s
+                ORDER BY recorded_at ASC
+            """, (user_id, interval))
         
         history_data = cursor.fetchall()
         
-        # Format data for Chart.js
+        # Format data for Chart.js with time scale
         chart_data = {
-            'labels': [],
             'datasets': [{
                 'label': 'Total Points',
                 'data': [],
@@ -1240,17 +1266,19 @@ def get_portfolio_history(user_id):
                 'fill': True,
                 'tension': 0.4
             }]
-        }
+        };
         
         for row in history_data:
-            total_points = float(row[0])
-            recorded_at = row[3]
+            total_points = float(row[0]);
+            recorded_at = row[3];
             
-            # Format date for display
-            chart_data['labels'].append(recorded_at.strftime('%m/%d'))
-            chart_data['datasets'][0]['data'].append(total_points)
+            # Use ISO format for proper time parsing
+            chart_data['datasets'][0]['data'].append({
+                'x': recorded_at.isoformat(),
+                'y': total_points
+            });
         
-        return chart_data
+        return chart_data;
         
     except Exception as e:
         return {"error": str(e)}, 500
@@ -1340,6 +1368,87 @@ def test_portfolio_history():
     
     record_portfolio_history()
     return "Portfolio history recorded successfully! <a href='/portfolio'>View Portfolio</a>"
+
+@app.route('/api/artist_history/<spotify_id>')
+def get_artist_history_api(spotify_id):
+    """Get artist price history data for charting with time range filtering"""
+    if 'user_id' not in session:
+        return {'error': 'Not authenticated'}, 401
+    
+    # Get time range parameter (default to 30 days)
+    time_range = request.args.get('range', '1month')
+    
+    # Map time ranges to SQL intervals
+    range_intervals = {
+        '1week': '7 days',
+        '1month': '30 days', 
+        '3months': '90 days',
+        '1year': '365 days',
+        'all': '10 years'  # Effectively all data
+    }
+    
+    interval = range_intervals.get(time_range, '30 days')
+    
+    conn = db_pool.getconn()
+    try:
+        cursor = conn.cursor()
+        
+        # Get artist name for label
+        cursor.execute("SELECT name FROM artists WHERE spotify_id = %s", (spotify_id,))
+        artist_row = cursor.fetchone()
+        if not artist_row:
+            return {'error': 'Artist not found'}, 404
+        
+        artist_name = artist_row[0]
+        
+        # Get price history for the specified time range
+        if time_range == 'all':
+            cursor.execute("""
+                SELECT recorded_at, price 
+                FROM artist_history 
+                WHERE spotify_id = %s 
+                ORDER BY recorded_at ASC
+            """, (spotify_id,))
+        else:
+            cursor.execute("""
+                SELECT recorded_at, price 
+                FROM artist_history 
+                WHERE spotify_id = %s 
+                    AND recorded_at >= NOW() - INTERVAL %s
+                ORDER BY recorded_at ASC
+            """, (spotify_id, interval))
+        
+        history = cursor.fetchall()
+        
+        # Format data for Chart.js with time scale
+        chart_data = {
+            'datasets': [{
+                'label': artist_name,
+                'data': [],
+                'borderColor': '#10b981',
+                'backgroundColor': 'rgba(16, 185, 129, 0.1)',
+                'tension': 0.2,
+                'fill': True
+            }]
+        }
+        
+        for row in history:
+            recorded_at = row[0]
+            price = float(row[1])
+            
+            # Use ISO format for proper time parsing
+            chart_data['datasets'][0]['data'].append({
+                'x': recorded_at.isoformat(),
+                'y': price
+            })
+        
+        return chart_data
+        
+    except Exception as e:
+        return {'error': str(e)}, 500
+    finally:
+        cursor.close()
+        db_pool.putconn(conn)
 
 def main():
     # Initialize Spotify API client and database connection
