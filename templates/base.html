@@ -284,9 +284,6 @@
                             <p class="text-sm font-medium themed-text">
                                 {% if session.username %}{{ session.username }}{% else %}User{% endif %}
                             </p>
-                            <p class="text-xs themed-text-tertiary">
-                                {% if session.member_since %}Member since {{ session.member_since }}{% endif %}
-                            </p>
                             {% if session.is_admin %}
                             <div class="flex items-center mt-1">
                                 <span class="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200">

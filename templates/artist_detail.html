@@ -45,7 +45,7 @@
                         <span class="themed-text-secondary">Genres:</span>
                         <div class="flex flex-wrap gap-1 mt-1">
                             {% for genre in spotify_info.genres[:3] %}
-                            <span class="bg-green-100 text-green-800 text-xs px-2 py-1 rounded-full">{{ genre.title() }}</span>
+                            <span class="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 text-xs px-2 py-1 rounded-full">{{ genre.title() }}</span>
                             {% endfor %}
                         </div>
                     </div>
