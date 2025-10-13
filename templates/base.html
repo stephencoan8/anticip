@@ -206,8 +206,8 @@
       style="background-color: var(--bg-primary); color: var(--text-primary);">
     <div class="flex">
         <!-- Left Sidebar -->
-        <div class="w-64 themed-bg themed-shadow min-h-screen fixed left-0 top-0 z-10 transition-colors duration-300 flex flex-col">
-            <div class="p-6 flex-1">
+        <div class="w-64 themed-bg themed-shadow h-screen fixed left-0 top-0 z-10 transition-colors duration-300 flex flex-col overflow-y-auto">
+            <div class="p-6 flex-1 overflow-y-auto">
                 <h1 class="text-2xl font-bold text-green-600 mb-8">anticip</h1>
                 
                 <!-- Main Navigation -->
@@ -280,9 +280,12 @@
                                 {% if session.username %}{{ session.username[0]|upper }}{% else %}U{% endif %}
                             </span>
                         </div>
-                        <div class="ml-3">
+                        <div class="ml-3 flex-1">
                             <p class="text-sm font-medium themed-text">
                                 {% if session.username %}{{ session.username }}{% else %}User{% endif %}
+                            </p>
+                            <p class="text-xs themed-text-tertiary">
+                                {% if session.member_since %}Member since {{ session.member_since }}{% endif %}
                             </p>
                             {% if session.is_admin %}
                             <div class="flex items-center mt-1">
@@ -304,16 +307,16 @@
                         Settings
                     </a>
                 </div>
-                
-                <!-- Logout Button - Positioned at bottom -->
-                <div class="mt-auto p-6">
-                    <a href="/logout" class="flex items-center px-3 py-2 themed-text themed-hover-red rounded-lg transition-colors w-full">
-                        <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
-                        </svg>
-                        Logout
-                    </a>
-                </div>
+            </div>
+            
+            <!-- Logout Button - Positioned at bottom -->
+            <div class="p-6 border-t themed-border">
+                <a href="/logout" class="flex items-center px-3 py-2 themed-text themed-hover-red rounded-lg transition-colors w-full">
+                    <svg class="w-5 h-5 mr-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"></path>
+                    </svg>
+                    Logout
+                </a>
             </div>
         </div>
         

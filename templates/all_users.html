@@ -19,6 +19,9 @@
                             <div>
                                 <div class="themed-text font-medium">{{ user.username }}</div>
                                 <div class="themed-text-secondary text-sm">
+                                    Member since {{ user.created_at.strftime('%B %Y') if user.created_at else 'Unknown' }}
+                                </div>
+                                <div class="themed-text-secondary text-sm">
                                     <a href="{{ url_for('portfolio', user_id=user.id) }}" class="text-green-600 hover:text-green-700">View Portfolio</a>
                                 </div>
                             </div>

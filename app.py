@@ -362,12 +362,13 @@ def login():
         conn = db_pool.getconn()
         try:
             cursor = conn.cursor()
-            cursor.execute("SELECT id, password, username, is_admin FROM users WHERE username = %s", (username,))
+            cursor.execute("SELECT id, password, username, is_admin, created_at FROM users WHERE username = %s", (username,))
             user = cursor.fetchone()
             if user and bcrypt.checkpw(password, user[1].encode('utf-8')):
                 session['user_id'] = user[0]
                 session['username'] = user[2]
                 session['is_admin'] = user[3] if user[3] is not None else False
+                session['member_since'] = user[4].strftime('%B %Y') if user[4] else 'Unknown'
                 return redirect(url_for('list_artists'))  # Changed from 'artists' to 'list_artists'
             else:
                 return render_template('login.html', error="Invalid username or password")
@@ -388,12 +389,15 @@ def register():
         conn = db_pool.getconn()
         try:
             cursor = conn.cursor()
-            cursor.execute("INSERT INTO users (username, password, balance) VALUES (%s, %s, %s) RETURNING id", (username, hashed, 10000.00))
-            user_id = cursor.fetchone()[0]
+            cursor.execute("INSERT INTO users (username, password, balance) VALUES (%s, %s, %s) RETURNING id, created_at", (username, hashed, 10000.00))
+            result = cursor.fetchone()
+            user_id = result[0]
+            created_at = result[1]
             conn.commit()
             session['user_id'] = user_id
             session['username'] = username
             session['is_admin'] = False  # New users are not admin by default
+            session['member_since'] = created_at.strftime('%B %Y') if created_at else 'Unknown'
             return redirect(url_for('list_artists'))  # Changed from 'artists' to 'list_artists'
         except Exception as e:
             conn.rollback()
@@ -408,6 +412,7 @@ def logout():
     session.pop('user_id', None)
     session.pop('username', None)
     session.pop('is_admin', None)
+    session.pop('member_since', None)
     return redirect(url_for('login'))
 
 @app.route('/refresh_data', methods=['POST'])
@@ -772,9 +777,9 @@ def all_users():
     conn = db_pool.getconn()
     try:
         cursor = conn.cursor()
-        # Get all users except current user, with their follow status
+        # Get all users except current user, with their follow status and join date
         cursor.execute("""
-            SELECT u.id, u.username,
+            SELECT u.id, u.username, u.created_at,
                 CASE
                     WHEN f.status IS NULL THEN 'none'
                     WHEN f.status = 'pending' THEN 'pending'
@@ -785,8 +790,8 @@ def all_users():
             WHERE u.id != %s
             ORDER BY u.username
         """, (session['user_id'], session['user_id']))
-        users = [{'id': id, 'username': username, 'follow_status': status} 
-                for id, username, status in cursor.fetchall()]
+        users = [{'id': id, 'username': username, 'created_at': created_at, 'follow_status': status} 
+                for id, username, created_at, status in cursor.fetchall()]
         return render_template('all_users.html', users=users)
     except Exception as e:
         return f"Database error: {str(e)}", 500
@@ -985,20 +990,21 @@ def settings():
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
-    # Get user's creation date (if column exists)
     conn = db_pool.getconn()
     try:
         cursor = conn.cursor()
-        # Try to get created_at, but handle case where column doesn't exist
-        try:
-            cursor.execute("SELECT created_at FROM users WHERE id = %s", (session['user_id'],))
-            result = cursor.fetchone()
-            member_since = result[0] if result else None
-        except:
-            # If created_at column doesn't exist, set as None
-            member_since = None
+        # Get user information including creation date
+        cursor.execute("SELECT username, created_at FROM users WHERE id = %s", (session['user_id'],))
+        result = cursor.fetchone()
         
-        return render_template('settings.html', member_since=member_since)
+        if result:
+            username, member_since = result
+            return render_template('settings.html', 
+                                 username=username,
+                                 member_since=member_since)
+        else:
+            return "User not found", 404
+            
     except Exception as e:
         return f"Database error: {str(e)}", 500
     finally:
