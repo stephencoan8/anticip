@@ -65,6 +65,28 @@
             </div>
         </div>
         
+        <!-- Tab Navigation -->
+        <div class="mb-6">
+            <div class="border-b themed-border">
+                <nav class="-mb-px flex space-x-8">
+                    <button id="holdingsTab" class="portfolio-tab active py-2 px-1 border-b-2 border-green-500 font-medium text-sm text-green-600" onclick="switchTab('holdings')">
+                        <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 8v8m-4-5v5m-4-2v2m-2 4h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"></path>
+                        </svg>
+                        Current Holdings
+                    </button>
+                    <button id="historyTab" class="portfolio-tab py-2 px-1 border-b-2 border-transparent font-medium text-sm themed-text-secondary hover:themed-text hover:border-gray-300 transition-colors" onclick="switchTab('history')">
+                        <svg class="w-4 h-4 inline mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v4a2 2 0 01-2 2h-2a2 2 0 01-2-2z"></path>
+                        </svg>
+                        Trade History
+                    </button>
+                </nav>
+            </div>
+        </div>
+        
+        <!-- Holdings Tab Content -->
+        <div id="holdingsContent" class="tab-content">
         <h2 class="text-xl font-semibold mb-4 themed-text">
             {% if is_own_portfolio %}
                 Your Holdings
@@ -272,6 +294,124 @@
         </div>
         {% endif %}
         {% endif %}
+        </div>
+        
+        <!-- Trade History Tab Content -->
+        <div id="historyContent" class="tab-content hidden">
+            <h2 class="text-xl font-semibold mb-4 themed-text">
+                {% if is_own_portfolio %}
+                    Your Trade History
+                {% else %}
+                    {{ username }}'s Trade History
+                {% endif %}
+            </h2>
+            
+            <!-- Trade History Sort Controls -->
+            <form method="get" id="historyForm" class="flex items-center gap-3 mb-6">
+                <label for="history_order" class="font-medium themed-text text-sm">Sort by:</label>
+                <input type="hidden" name="tab" value="history">
+                <input type="hidden" name="history_direction" id="historyDirectionInput" value="{{ request.args.get('history_direction', 'desc') }}">
+                <select name="history_order" id="history_order" class="modern-dropdown" onchange="document.getElementById('historyForm').submit()">
+                    <option value="date" {% if request.args.get('history_order', 'date') == 'date' %}selected{% endif %}>Date</option>
+                    <option value="artist" {% if request.args.get('history_order') == 'artist' %}selected{% endif %}>Artist Name</option>
+                    <option value="shares" {% if request.args.get('history_order') == 'shares' %}selected{% endif %}>Shares</option>
+                    <option value="total_amount" {% if request.args.get('history_order') == 'total_amount' %}selected{% endif %}>Total Amount</option>
+                </select>
+                <button type="button" class="sort-direction-btn" onclick="toggleHistoryDirection()" title="Toggle sort direction">
+                    {% if request.args.get('history_direction', 'desc') == 'asc' %}
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"></path>
+                        </svg>
+                    {% else %}
+                        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path>
+                        </svg>
+                    {% endif %}
+                </button>
+            </form>
+            
+            <!-- Trade History List -->
+            {% if trade_history %}
+            <div class="themed-bg rounded-lg themed-shadow overflow-hidden">
+                <!-- Header -->
+                <div class="themed-bg-tertiary px-6 py-3 border-b themed-border">
+                    <div class="grid grid-cols-12 gap-4 text-sm font-medium themed-text-secondary">
+                        <div class="col-span-1"></div> <!-- Image -->
+                        <div class="col-span-2">Artist</div>
+                        <div class="col-span-1">Type</div>
+                        <div class="col-span-1">Shares</div>
+                        <div class="col-span-1">Price</div>
+                        <div class="col-span-2">Total Amount</div>
+                        <div class="col-span-1">Popularity</div>
+                        <div class="col-span-3">Date</div>
+                    </div>
+                </div>
+                
+                <!-- Rows -->
+                <div class="divide-y themed-border">
+                    {% for trade in trade_history %}
+                    <div class="px-6 py-4 themed-hover transition-colors duration-200">
+                        <div class="grid grid-cols-12 gap-4 items-center">
+                            <div class="col-span-1">
+                                {% if trade.image_url %}
+                                    <img src="{{ trade.image_url }}" alt="{{ trade.artist_name }}" class="w-10 h-10 object-cover rounded-md">
+                                {% else %}
+                                    <div class="w-10 h-10 themed-bg-tertiary rounded-md flex items-center justify-center themed-text-secondary">
+                                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19V6l6 6v7"></path>
+                                        </svg>
+                                    </div>
+                                {% endif %}
+                            </div>
+                            <div class="col-span-2">
+                                <a href="/artist/{{ trade.spotify_id }}" class="font-medium themed-text hover:text-green-600 transition-colors">{{ trade.artist_name }}</a>
+                            </div>
+                            <div class="col-span-1">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                    {% if trade.transaction_type == 'buy' %}bg-green-100 text-green-800{% else %}bg-red-100 text-red-800{% endif %}">
+                                    {{ trade.transaction_type.upper() }}
+                                </span>
+                            </div>
+                            <div class="col-span-1">
+                                <span class="themed-text">{{ trade.shares }}</span>
+                            </div>
+                            <div class="col-span-1">
+                                <span class="themed-text">{{ trade.price_per_share | round(1) }}</span>
+                            </div>
+                            <div class="col-span-2">
+                                <span class="font-medium themed-text">
+                                    {{ trade.total_amount | round(0) | int }} pts
+                                </span>
+                            </div>
+                            <div class="col-span-1">
+                                <span class="themed-text">{{ trade.popularity }}</span>
+                            </div>
+                            <div class="col-span-3">
+                                <span class="themed-text-tertiary text-sm">
+                                    {% if trade.created_at %}
+                                        {{ trade.created_at.strftime('%Y-%m-%d %H:%M') }}
+                                    {% else %}
+                                        N/A
+                                    {% endif %}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% else %}
+            <div class="themed-bg p-6 rounded-lg themed-shadow text-center">
+                <p class="themed-text-secondary">
+                    {% if is_own_portfolio %}
+                        No completed trades yet. Start trading to build your history!
+                    {% else %}
+                        {{ username }} has no completed trades yet.
+                    {% endif %}
+                </p>
+            </div>
+            {% endif %}
+        </div>
     </div>
 </div>
 
@@ -280,6 +420,16 @@
             background-color: #10b981 !important;
             color: white !important;
         }
+        
+        .portfolio-tab.active {
+            border-color: #10b981 !important;
+            color: #10b981 !important;
+        }
+        
+        .tab-content.hidden {
+            display: none;
+        }
+        
         .time-range-btn.active:hover {
             background-color: #059669 !important;
         }
@@ -288,6 +438,37 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
 <script>
+// Tab functionality - Define globally so onclick can access it
+function switchTab(tab) {
+    // Hide all tab contents
+    document.getElementById('holdingsContent').classList.add('hidden');
+    document.getElementById('historyContent').classList.add('hidden');
+    
+    // Remove active class from all tabs
+    document.querySelectorAll('.portfolio-tab').forEach(t => {
+        t.classList.remove('active', 'border-green-500', 'text-green-600');
+        t.classList.add('border-transparent', 'themed-text-secondary');
+    });
+    
+    // Show selected tab content and activate tab
+    if (tab === 'history') {
+        document.getElementById('historyContent').classList.remove('hidden');
+        document.getElementById('historyTab').classList.add('active', 'border-green-500', 'text-green-600');
+        document.getElementById('historyTab').classList.remove('border-transparent', 'themed-text-secondary');
+    } else {
+        document.getElementById('holdingsContent').classList.remove('hidden');
+        document.getElementById('holdingsTab').classList.add('active', 'border-green-500', 'text-green-600');
+        document.getElementById('holdingsTab').classList.remove('border-transparent', 'themed-text-secondary');
+    }
+}
+
+// History form functions
+function toggleHistoryDirection() {
+    var dirInput = document.getElementById('historyDirectionInput');
+    dirInput.value = dirInput.value === 'asc' ? 'desc' : 'asc';
+    document.getElementById('historyForm').submit();
+}
+
 document.addEventListener('DOMContentLoaded', function() {
     // Portfolio History Chart
     const ctx = document.getElementById('portfolioChart').getContext('2d');
@@ -306,13 +487,31 @@ document.addEventListener('DOMContentLoaded', function() {
         try {
             const userId = {% if is_own_portfolio %}{{ session.user_id }}{% else %}{{ user_id if user_id else 'null' }}{% endif %};
             
-            if (!userId) return;
+            console.log('Loading portfolio history for user:', userId);
+            
+            if (!userId) {
+                console.error('No user ID available for portfolio history');
+                return;
+            }
             
             const response = await fetch(`/portfolio_history/${userId}?range=${range}`);
             const data = await response.json();
             
+            console.log('Portfolio history data:', data);
+            
             if (data.error) {
                 console.error('Error loading portfolio history:', data.error);
+                // Show API error message
+                const chartContainer = document.getElementById('portfolioChart').parentElement;
+                chartContainer.innerHTML = '<div class="text-center themed-text-secondary py-8"><p>⚠️ Error loading portfolio history</p><p class="text-sm mt-2">Error: ' + data.error + '</p></div>';
+                return;
+            }
+            
+            if (!data.datasets || !data.datasets[0] || !data.datasets[0].data || data.datasets[0].data.length === 0) {
+                console.warn('No portfolio history data available');
+                // Show message if no data
+                const chartContainer = document.getElementById('portfolioChart').parentElement;
+                chartContainer.innerHTML = '<div class="text-center themed-text-secondary py-8"><p>📊 No portfolio history data available yet.</p><p class="text-sm mt-2">Portfolio history will appear after:<br>1. Making some trades<br>2. Using the "Refresh Spotify Data" button</p></div>';
                 return;
             }
             
@@ -418,6 +617,11 @@ document.addEventListener('DOMContentLoaded', function() {
     
     // Load initial data
     loadPortfolioHistory(currentRange);
+    
+    // Check URL parameters to show correct tab on load
+    const urlParams = new URLSearchParams(window.location.search);
+    const activeTab = urlParams.get('tab') || 'holdings';
+    switchTab(activeTab);
 });
 </script>
 {% endblock %}

@@ -108,6 +108,62 @@ try:
             recorded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
     """)
+    
+    # Add missing columns if they don't exist (for database migration)
+    try:
+        # Check if total_amount column exists in transactions table
+        cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name='transactions' AND column_name='total_amount'
+        """)
+        if not cursor.fetchone():
+            print("Adding missing total_amount column to transactions table...")
+            cursor.execute("ALTER TABLE transactions ADD COLUMN total_amount NUMERIC(12, 2)")
+            
+        # Check if is_admin column exists in users table  
+        cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name='users' AND column_name='is_admin'
+        """)
+        if not cursor.fetchone():
+            print("Adding missing is_admin column to users table...")
+            cursor.execute("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE")
+            
+        # Check if created_at column exists in users table
+        cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name='users' AND column_name='created_at'
+        """)
+        if not cursor.fetchone():
+            print("Adding missing created_at column to users table...")
+            cursor.execute("ALTER TABLE users ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
+            
+        # Check if privacy column exists in transactions table
+        cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name='transactions' AND column_name='privacy'
+        """)
+        if not cursor.fetchone():
+            print("Adding missing privacy column to transactions table...")
+            cursor.execute("ALTER TABLE transactions ADD COLUMN privacy VARCHAR(10) DEFAULT 'public' CHECK (privacy IN ('public', 'followers', 'private'))")
+            
+        # Check if caption column exists in transactions table
+        cursor.execute("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name='transactions' AND column_name='caption'
+        """)
+        if not cursor.fetchone():
+            print("Adding missing caption column to transactions table...")
+            cursor.execute("ALTER TABLE transactions ADD COLUMN caption TEXT")
+            
+    except Exception as migration_error:
+        print(f"Migration warning: {migration_error}")
+    
     conn.commit()
 except Exception as e:
     print(f"Error creating tables: {e}")
@@ -536,9 +592,9 @@ def buy_artist(spotify_id):
         
         # Record the transaction
         cursor.execute("""
-            INSERT INTO transactions (user_id, artist_id, transaction_type, shares, price_per_share, total_value, caption, visibility)
-            VALUES (%s, %s, 'buy', %s, %s, %s, %s, %s)
-        """, (user_id, artist_id, shares, price, total_cost, caption, privacy))
+            INSERT INTO transactions (user_id, artist_id, transaction_type, shares, price_per_share, total_amount, total_value, caption, privacy)
+            VALUES (%s, %s, 'buy', %s, %s, %s, %s, %s, %s)
+        """, (user_id, artist_id, shares, price, total_cost, total_cost, caption, privacy))
         
         conn.commit()
         return redirect(url_for('artist_detail', spotify_id=spotify_id))
@@ -590,9 +646,9 @@ def sell_artist(spotify_id):
         
         # Record the transaction
         cursor.execute("""
-            INSERT INTO transactions (user_id, artist_id, transaction_type, shares, price_per_share, total_value, caption, visibility)
-            VALUES (%s, %s, 'sell', %s, %s, %s, %s, %s)
-        """, (user_id, artist_id, shares, price, total_value, caption, privacy))
+            INSERT INTO transactions (user_id, artist_id, transaction_type, shares, price_per_share, total_amount, total_value, caption, privacy)
+            VALUES (%s, %s, 'sell', %s, %s, %s, %s, %s, %s)
+        """, (user_id, artist_id, shares, price, total_value, total_value, caption, privacy))
         
         conn.commit()
         return redirect(url_for('artist_detail', spotify_id=spotify_id))
@@ -750,6 +806,71 @@ def portfolio(user_id=None):
             net_worth = actual_balance  # Always include balance in total
             percent_winning = 0.0
         
+        # Get trade history data (completed trades)
+        trade_history = []
+        history_order = request.args.get('history_order', 'date')
+        history_direction = request.args.get('history_direction', 'desc')
+        
+        if is_own_portfolio or not is_own_portfolio:  # Show trade history for all profiles
+            # Query for all transactions (both buy and sell)
+            cursor.execute("""
+                SELECT 
+                    a.name as artist_name,
+                    a.image_url,
+                    a.spotify_id,
+                    t.transaction_type,
+                    t.shares,
+                    t.price_per_share,
+                    COALESCE(t.total_amount, t.shares * t.price_per_share) as total_amount,
+                    t.created_at,
+                    ah.popularity
+                FROM transactions t
+                JOIN artists a ON t.artist_id = a.id
+                LEFT JOIN artist_history ah ON a.spotify_id = ah.spotify_id 
+                    AND DATE(ah.recorded_at) = DATE(t.created_at)
+                WHERE t.user_id = %s
+                ORDER BY 
+                    CASE WHEN %s = 'date' THEN t.created_at END DESC,
+                    CASE WHEN %s = 'artist' THEN a.name END ASC,
+                    CASE WHEN %s = 'shares' THEN t.shares END DESC,
+                    CASE WHEN %s = 'total_amount' THEN COALESCE(t.total_amount, t.shares * t.price_per_share) END DESC
+            """, (user_id, history_order, history_order, history_order, history_order))
+            
+            trade_data = cursor.fetchall()
+            
+            for trade in trade_data:
+                created_at = trade[7]
+                trade_obj = {
+                    'artist_name': trade[0],
+                    'image_url': trade[1],
+                    'spotify_id': trade[2],
+                    'transaction_type': trade[3],  # 'buy' or 'sell'
+                    'shares': int(trade[4]) if trade[4] else 0,
+                    'price_per_share': float(trade[5]) if trade[5] else 0.0,
+                    'total_amount': float(trade[6]) if trade[6] else 0.0,
+                    'created_at': created_at,
+                    'popularity': int(trade[8]) if trade[8] else 0,
+                    # Add fields that the template might expect, with safe date handling
+                    'buy_popularity': int(trade[8]) if trade[8] else 0,
+                    'sell_popularity': int(trade[8]) if trade[8] else 0,
+                    'total_gain': 0.0,  # Individual transactions don't have gain
+                    'percent_gain': 0.0,
+                    'buy_date': created_at if trade[3] == 'buy' and created_at else created_at,
+                    'sell_date': created_at if trade[3] == 'sell' and created_at else created_at
+                }
+                trade_history.append(trade_obj)
+            
+            # Apply direction sorting if not default
+            if history_direction == 'asc':
+                if history_order == 'date':
+                    trade_history.sort(key=lambda x: x['created_at'])
+                elif history_order == 'artist':
+                    trade_history.sort(key=lambda x: x['artist_name'])
+                elif history_order == 'shares':
+                    trade_history.sort(key=lambda x: x['shares'])
+                elif history_order == 'total_amount':
+                    trade_history.sort(key=lambda x: x['total_amount'])
+        
         return render_template('portfolio.html',
                             holdings=holdings,
                             balance=balance,
@@ -761,7 +882,9 @@ def portfolio(user_id=None):
                             direction=direction,
                             view=view,
                             username=username,
-                            is_own_portfolio=is_own_portfolio)
+                            user_id=user_id,
+                            is_own_portfolio=is_own_portfolio,
+                            trade_history=trade_history)
     except Exception as e:
         return f"Database error: {str(e)}", 500
     finally:
@@ -1031,16 +1154,16 @@ def feed():
                        COUNT(tl.id) as like_count,
                        COUNT(tc.id) as comment_count,
                        COUNT(CASE WHEN tl.user_id = %s THEN 1 END) as user_liked,
-                       t.visibility,
+                       t.privacy,
                        COUNT(CASE WHEN tc.user_id = %s THEN 1 END) as user_commented
                 FROM transactions t
                 JOIN users u ON t.user_id = u.id
                 JOIN artists a ON t.artist_id = a.id
                 LEFT JOIN transaction_likes tl ON t.id = tl.transaction_id
                 LEFT JOIN transaction_comments tc ON t.id = tc.transaction_id
-                WHERE t.visibility = 'public'
+                WHERE t.privacy = 'public'
                 GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
-                         t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id, t.visibility
+                         t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id, t.privacy
                 ORDER BY t.created_at DESC
                 LIMIT 50
             """, (user_id, user_id))
@@ -1052,7 +1175,7 @@ def feed():
                        COUNT(tl.id) as like_count,
                        COUNT(tc.id) as comment_count,
                        COUNT(CASE WHEN tl.user_id = %s THEN 1 END) as user_liked,
-                       t.visibility,
+                       t.privacy,
                        COUNT(CASE WHEN tc.user_id = %s THEN 1 END) as user_commented
                 FROM transactions t
                 JOIN users u ON t.user_id = u.id
@@ -1061,7 +1184,7 @@ def feed():
                 LEFT JOIN transaction_comments tc ON t.id = tc.transaction_id
                 WHERE t.user_id = %s
                 GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
-                         t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id, t.visibility
+                         t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id, t.privacy
                 ORDER BY t.created_at DESC
                 LIMIT 50
             """, (user_id, user_id, user_id))
@@ -1073,7 +1196,7 @@ def feed():
                        COUNT(tl.id) as like_count,
                        COUNT(tc.id) as comment_count,
                        COUNT(CASE WHEN tl.user_id = %s THEN 1 END) as user_liked,
-                       t.visibility,
+                       t.privacy,
                        COUNT(CASE WHEN tc.user_id = %s THEN 1 END) as user_commented
                 FROM transactions t
                 JOIN users u ON t.user_id = u.id
@@ -1085,13 +1208,13 @@ def feed():
                            SELECT followed_id FROM follows 
                            WHERE follower_id = %s AND status = 'accepted'
                        ))
-                  AND (t.visibility = 'public' OR 
-                       (t.visibility = 'followers' AND (t.user_id = %s OR t.user_id IN (
+                  AND (t.privacy = 'public' OR 
+                       (t.privacy = 'followers' AND (t.user_id = %s OR t.user_id IN (
                            SELECT followed_id FROM follows 
                            WHERE follower_id = %s AND status = 'accepted'
                        ))))
                 GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
-                         t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id, t.visibility
+                         t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id, t.privacy
                 ORDER BY t.created_at DESC
                 LIMIT 50
             """, (user_id, user_id, user_id, user_id, user_id, user_id))
