@@ -7,20 +7,43 @@ import psycopg2
 from psycopg2 import pool
 import bcrypt
 import json
+from urllib.parse import urlparse
 
 app = Flask(__name__)
-app.secret_key = os.urandom(24)
 
 # Load environment variables
 load_dotenv()
 client_id = os.getenv("SPOTIFY_CLIENT_ID")
 client_secret = os.getenv("SPOTIFY_CLIENT_SECRET")
+secret_key = os.getenv("SECRET_KEY", os.urandom(24))
+app.secret_key = secret_key
 
 # Set up Spotipy
 sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=client_id, client_secret=client_secret))
 
 # Set up PostgreSQL connection pool
-db_pool = psycopg2.pool.SimpleConnectionPool(1, 20, dbname="anticip_db", user="stephencoan", password="", host="localhost")
+# Parse DATABASE_URL for production or use local config
+database_url = os.getenv("DATABASE_URL")
+if database_url:
+    # Parse the DATABASE_URL (Railway provides this)
+    result = urlparse(database_url)
+    db_pool = psycopg2.pool.SimpleConnectionPool(
+        1, 20,
+        dbname=result.path[1:],
+        user=result.username,
+        password=result.password,
+        host=result.hostname,
+        port=result.port
+    )
+else:
+    # Local development
+    db_pool = psycopg2.pool.SimpleConnectionPool(
+        1, 20,
+        dbname="anticip_db",
+        user="stephencoan",
+        password="",
+        host="localhost"
+    )
 
 # Ensure tables exist
 conn = db_pool.getconn()
