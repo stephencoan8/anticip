@@ -33,7 +33,7 @@ if database_url:
         user=result.username,
         password=result.password,
         host=result.hostname,
-        port=result.port
+        port=result.port if result.port else 5432
     )
 else:
     # Local development
