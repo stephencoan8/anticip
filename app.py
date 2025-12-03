@@ -32,16 +32,23 @@ if database_url:
     
     # Parse the DATABASE_URL
     result = urlparse(database_url)
-    db_pool = psycopg2.pool.SimpleConnectionPool(
-        1, 20,
-        dbname=result.path[1:],
-        user=result.username,
-        password=result.password,
-        host=result.hostname,
-        port=int(result.port) if result.port else 5432
-    )
+    print(f"Connecting to database: {result.hostname}:{result.port}")
+    try:
+        db_pool = psycopg2.pool.SimpleConnectionPool(
+            1, 20,
+            dbname=result.path[1:],
+            user=result.username,
+            password=result.password,
+            host=result.hostname,
+            port=int(result.port) if result.port else 5432
+        )
+        print("Database connection pool created successfully")
+    except Exception as e:
+        print(f"Error creating database pool: {e}")
+        raise
 else:
     # Local development
+    print("Using local database configuration")
     db_pool = psycopg2.pool.SimpleConnectionPool(
         1, 20,
         dbname="anticip_db",
@@ -51,6 +58,7 @@ else:
     )
 
 # Ensure tables exist
+print("Initializing database tables...")
 conn = db_pool.getconn()
 try:
     cursor = conn.cursor()
@@ -193,12 +201,16 @@ try:
         print(f"Migration warning: {migration_error}")
     
     conn.commit()
+    print("Database tables initialized successfully")
 except Exception as e:
     print(f"Error creating tables: {e}")
     conn.rollback()
+    raise
 finally:
     cursor.close()
     db_pool.putconn(conn)
+
+print("Application startup complete, ready to accept requests")
 
 @app.route('/')
 def home():
