@@ -26,13 +26,25 @@ sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=client_id, 
 # Fixed for Railway deployment: converts postgres:// to postgresql://
 database_url = os.getenv("DATABASE_URL")
 if database_url:
+    print(f"Raw DATABASE_URL: {database_url[:50]}...")  # Print first 50 chars for debugging
+    
     # Railway uses postgres:// but psycopg2 requires postgresql://
     if database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql://", 1)
+        print(f"Converted to: {database_url[:50]}...")
     
     # Parse the DATABASE_URL
     result = urlparse(database_url)
-    print(f"Connecting to database: {result.hostname}:{result.port}")
+    print(f"Parsed - hostname: {result.hostname}, path: {result.path}, username: {result.username}")
+    
+    # Extract port safely
+    try:
+        db_port = int(result.port) if result.port else 5432
+    except (ValueError, TypeError):
+        print(f"Warning: Could not parse port from URL, using default 5432")
+        db_port = 5432
+    
+    print(f"Connecting to database: {result.hostname}:{db_port}")
     try:
         db_pool = psycopg2.pool.SimpleConnectionPool(
             1, 20,
@@ -40,7 +52,7 @@ if database_url:
             user=result.username,
             password=result.password,
             host=result.hostname,
-            port=int(result.port) if result.port else 5432
+            port=db_port
         )
         print("Database connection pool created successfully")
     except Exception as e:
