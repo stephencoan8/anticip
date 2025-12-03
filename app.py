@@ -25,7 +25,11 @@ sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=client_id, 
 # Parse DATABASE_URL for production or use local config
 database_url = os.getenv("DATABASE_URL")
 if database_url:
-    # Parse the DATABASE_URL (Railway provides this)
+    # Railway uses postgres:// but psycopg2 requires postgresql://
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+    
+    # Parse the DATABASE_URL
     result = urlparse(database_url)
     db_pool = psycopg2.pool.SimpleConnectionPool(
         1, 20,
@@ -33,7 +37,7 @@ if database_url:
         user=result.username,
         password=result.password,
         host=result.hostname,
-        port=result.port if result.port else 5432
+        port=int(result.port) if result.port else 5432
     )
 else:
     # Local development
