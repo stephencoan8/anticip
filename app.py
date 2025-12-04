@@ -23,44 +23,20 @@ sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=client_id, 
 
 # Set up PostgreSQL connection pool
 # Parse DATABASE_URL for production or use local config
-# Fixed for Railway deployment: converts postgres:// to postgresql://
 database_url = os.getenv("DATABASE_URL")
 if database_url:
-    print(f"Raw DATABASE_URL: {database_url[:50]}...")  # Print first 50 chars for debugging
-    
-    # Railway uses postgres:// but psycopg2 requires postgresql://
-    if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql://", 1)
-        print(f"Converted to: {database_url[:50]}...")
-    
-    # Parse the DATABASE_URL
+    # Parse the DATABASE_URL (Railway provides this)
     result = urlparse(database_url)
-    print(f"Parsed - hostname: {result.hostname}, path: {result.path}, username: {result.username}")
-    
-    # Extract port safely
-    try:
-        db_port = int(result.port) if result.port else 5432
-    except (ValueError, TypeError):
-        print(f"Warning: Could not parse port from URL, using default 5432")
-        db_port = 5432
-    
-    print(f"Connecting to database: {result.hostname}:{db_port}")
-    try:
-        db_pool = psycopg2.pool.SimpleConnectionPool(
-            1, 20,
-            dbname=result.path[1:],
-            user=result.username,
-            password=result.password,
-            host=result.hostname,
-            port=db_port
-        )
-        print("Database connection pool created successfully")
-    except Exception as e:
-        print(f"Error creating database pool: {e}")
-        raise
+    db_pool = psycopg2.pool.SimpleConnectionPool(
+        1, 20,
+        dbname=result.path[1:],
+        user=result.username,
+        password=result.password,
+        host=result.hostname,
+        port=result.port
+    )
 else:
     # Local development
-    print("Using local database configuration")
     db_pool = psycopg2.pool.SimpleConnectionPool(
         1, 20,
         dbname="anticip_db",
@@ -70,7 +46,6 @@ else:
     )
 
 # Ensure tables exist
-print("Initializing database tables...")
 conn = db_pool.getconn()
 try:
     cursor = conn.cursor()
@@ -213,23 +188,34 @@ try:
         print(f"Migration warning: {migration_error}")
     
     conn.commit()
-    print("Database tables initialized successfully")
 except Exception as e:
     print(f"Error creating tables: {e}")
     conn.rollback()
-    raise
 finally:
     cursor.close()
     db_pool.putconn(conn)
-
-print("Application startup complete, ready to accept requests")
 
 @app.route('/')
 def home():
     if 'user_id' not in session:
         return redirect(url_for('login'))
-    # Redirect logged-in users to their portfolio
-    return redirect(url_for('portfolio', username=session.get('username')))
+    conn = db_pool.getconn()
+    try:
+        cursor = conn.cursor()
+        artist = sp.artist("3WrFJ7ztbogyGnTHbHJFl2")
+        cursor.execute("INSERT INTO artists (spotify_id, name, image_url) VALUES (%s, %s, %s) ON CONFLICT (spotify_id) DO UPDATE SET name = EXCLUDED.name, image_url = EXCLUDED.image_url",
+                    (artist['id'], artist['name'], artist['images'][0]['url'] if artist['images'] else None))
+        price = artist['popularity']
+        cursor.execute("INSERT INTO artist_history (spotify_id, popularity, price) VALUES (%s, %s, %s)",
+                    (artist['id'], artist['popularity'], price))
+        conn.commit()
+        return f"Artist: {artist['name']}, Popularity: {artist['popularity']}, Stock Price: ${price:.2f}"
+    except Exception as e:
+        conn.rollback()
+        return f"Database error: {str(e)}", 500
+    finally:
+        cursor.close()
+        db_pool.putconn(conn)
 
 @app.route('/artists')
 def list_artists():
@@ -629,9 +615,9 @@ def buy_artist(spotify_id):
         
         # Record the transaction
         cursor.execute("""
-            INSERT INTO transactions (user_id, artist_id, transaction_type, shares, price_per_share, total_amount, caption, privacy)
-            VALUES (%s, %s, 'buy', %s, %s, %s, %s, %s)
-        """, (user_id, artist_id, shares, price, total_cost, caption, privacy))
+            INSERT INTO transactions (user_id, artist_id, transaction_type, shares, price_per_share, total_amount, total_value, caption, privacy)
+            VALUES (%s, %s, 'buy', %s, %s, %s, %s, %s, %s)
+        """, (user_id, artist_id, shares, price, total_cost, total_cost, caption, privacy))
         
         conn.commit()
         return redirect(url_for('artist_detail', spotify_id=spotify_id))
@@ -683,9 +669,9 @@ def sell_artist(spotify_id):
         
         # Record the transaction
         cursor.execute("""
-            INSERT INTO transactions (user_id, artist_id, transaction_type, shares, price_per_share, total_amount, caption, privacy)
-            VALUES (%s, %s, 'sell', %s, %s, %s, %s, %s)
-        """, (user_id, artist_id, shares, price, total_value, caption, privacy))
+            INSERT INTO transactions (user_id, artist_id, transaction_type, shares, price_per_share, total_amount, total_value, caption, privacy)
+            VALUES (%s, %s, 'sell', %s, %s, %s, %s, %s, %s)
+        """, (user_id, artist_id, shares, price, total_value, total_value, caption, privacy))
         
         conn.commit()
         return redirect(url_for('artist_detail', spotify_id=spotify_id))
@@ -1186,7 +1172,7 @@ def feed():
         if view_mode == 'public':
             # Show all public transactions
             cursor.execute("""
-                SELECT t.id, t.transaction_type, t.shares, t.price_per_share, t.total_amount, 
+                SELECT t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
                        t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id,
                        COUNT(tl.id) as like_count,
                        COUNT(tc.id) as comment_count,
@@ -1199,7 +1185,7 @@ def feed():
                 LEFT JOIN transaction_likes tl ON t.id = tl.transaction_id
                 LEFT JOIN transaction_comments tc ON t.id = tc.transaction_id
                 WHERE t.privacy = 'public'
-                GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_amount, 
+                GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
                          t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id, t.privacy
                 ORDER BY t.created_at DESC
                 LIMIT 50
@@ -1207,7 +1193,7 @@ def feed():
         elif view_mode == 'self':
             # Show only current user's transactions
             cursor.execute("""
-                SELECT t.id, t.transaction_type, t.shares, t.price_per_share, t.total_amount, 
+                SELECT t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
                        t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id,
                        COUNT(tl.id) as like_count,
                        COUNT(tc.id) as comment_count,
@@ -1220,7 +1206,7 @@ def feed():
                 LEFT JOIN transaction_likes tl ON t.id = tl.transaction_id
                 LEFT JOIN transaction_comments tc ON t.id = tc.transaction_id
                 WHERE t.user_id = %s
-                GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_amount, 
+                GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
                          t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id, t.privacy
                 ORDER BY t.created_at DESC
                 LIMIT 50
@@ -1228,7 +1214,7 @@ def feed():
         else:  # followers
             # Show transactions from users the current user follows + their own
             cursor.execute("""
-                SELECT t.id, t.transaction_type, t.shares, t.price_per_share, t.total_amount, 
+                SELECT t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
                        t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id,
                        COUNT(tl.id) as like_count,
                        COUNT(tc.id) as comment_count,
@@ -1250,7 +1236,7 @@ def feed():
                            SELECT followed_id FROM follows 
                            WHERE follower_id = %s AND status = 'accepted'
                        ))))
-                GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_amount, 
+                GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
                          t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id, t.privacy
                 ORDER BY t.created_at DESC
                 LIMIT 50

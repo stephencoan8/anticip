@@ -1,0 +1,40 @@
+name: Daily Artist Popularity Update
+
+on:
+  schedule:
+    # Run daily at 6 AM UTC (2 AM EST / 11 PM PST)
+    - cron: '0 6 * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  update-popularity:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+      
+      - name: Install dependencies
+        run: |
+          pip install spotipy psycopg2-binary python-dotenv
+      
+      - name: Run popularity update
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          SPOTIFY_CLIENT_ID: ${{ secrets.SPOTIFY_CLIENT_ID }}
+          SPOTIFY_CLIENT_SECRET: ${{ secrets.SPOTIFY_CLIENT_SECRET }}
+        run: |
+          python update_popularity.py
+      
+      - name: Notify completion
+        if: success()
+        run: echo "✅ Artist popularity updated successfully!"
+      
+      - name: Notify failure
+        if: failure()
+        run: echo "❌ Artist popularity update failed!"
