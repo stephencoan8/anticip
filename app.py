@@ -507,19 +507,78 @@ def confirm_add_artist():
     spotify_id = request.form['spotify_id']
     name = request.form['name']
     image_url = request.form.get('image_url')
+    
+    conn = db_pool.getconn()
     try:
-        conn = db_pool.getconn()
         cursor = conn.cursor()
-        cursor.execute("INSERT INTO artists (spotify_id, name, image_url) VALUES (%s, %s, %s) ON CONFLICT (spotify_id) DO UPDATE SET name = EXCLUDED.name, image_url = EXCLUDED.image_url", (spotify_id, name, image_url))
-        # Fetch popularity for initial price
-        artist = sp.artist(spotify_id)
-        price = artist['popularity']
-        cursor.execute("INSERT INTO artist_history (spotify_id, popularity, price) VALUES (%s, %s, %s)", (spotify_id, artist['popularity'], price))
+        
+        # Insert artist into database
+        cursor.execute("""
+            INSERT INTO artists (spotify_id, name, image_url) 
+            VALUES (%s, %s, %s) 
+            ON CONFLICT (spotify_id) DO UPDATE 
+            SET name = EXCLUDED.name, image_url = EXCLUDED.image_url
+        """, (spotify_id, name, image_url))
+        
+        # Fetch complete artist data from Spotify
+        try:
+            # Get full artist details
+            artist_data = sp.artist(spotify_id)
+            
+            # Get top tracks from Spotify
+            top_tracks = sp.artist_top_tracks(spotify_id, country='US')
+            
+            # Get artist albums
+            albums = sp.artist_albums(spotify_id, album_type='album', limit=5)
+            
+            # Insert initial price history
+            price = artist_data.get('popularity', 0)
+            cursor.execute("""
+                INSERT INTO artist_history (spotify_id, popularity, price) 
+                VALUES (%s, %s, %s)
+            """, (spotify_id, artist_data.get('popularity', 0), price))
+            
+            # Insert complete Spotify data (genres, followers, tracks, albums, etc.)
+            cursor.execute("""
+                INSERT INTO spotify_data 
+                (spotify_id, followers, popularity, genres, top_tracks, recent_albums, external_urls, last_updated)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
+                ON CONFLICT (spotify_id) DO UPDATE SET
+                    followers = EXCLUDED.followers,
+                    popularity = EXCLUDED.popularity,
+                    genres = EXCLUDED.genres,
+                    top_tracks = EXCLUDED.top_tracks,
+                    recent_albums = EXCLUDED.recent_albums,
+                    external_urls = EXCLUDED.external_urls,
+                    last_updated = NOW()
+            """, (
+                spotify_id,
+                artist_data.get('followers', {}).get('total', 0),
+                artist_data.get('popularity', 0),
+                artist_data.get('genres', []),
+                json.dumps(top_tracks.get('tracks', [])[:10]),  # Top 10 tracks
+                json.dumps(albums.get('items', [])[:5]),  # 5 most recent albums
+                json.dumps(artist_data.get('external_urls', {}))
+            ))
+            
+            app.logger.info(f"Added new artist: {name} ({spotify_id}) with complete Spotify data")
+            
+        except Exception as spotify_error:
+            # If Spotify fetch fails, log but don't fail the whole operation
+            app.logger.error(f"Error fetching Spotify data for {spotify_id}: {str(spotify_error)}")
+            # Still insert basic price history even if extended data fails
+            cursor.execute("""
+                INSERT INTO artist_history (spotify_id, popularity, price) 
+                VALUES (%s, %s, %s)
+            """, (spotify_id, 0, 0))
+        
         conn.commit()
         return redirect(url_for('list_artists'))
+        
     except Exception as e:
         conn.rollback()
-        return render_template('add_artist.html', error=str(e))
+        app.logger.error(f"Error adding artist: {str(e)}", exc_info=True)
+        return render_template('add_artist.html', error=f"Failed to add artist: {str(e)}")
     finally:
         cursor.close()
         db_pool.putconn(conn)
