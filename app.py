@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session
+from flask import Flask, render_template, request, redirect, url_for, session, jsonify
 import spotipy
 from spotipy.oauth2 import SpotifyClientCredentials
 from dotenv import load_dotenv
@@ -8,41 +8,88 @@ from psycopg2 import pool
 import bcrypt
 import json
 from urllib.parse import urlparse
+from datetime import datetime, timedelta
+import logging
+from logging.handlers import RotatingFileHandler
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
-app = Flask(__name__)
+# Import custom modules
+from config import config
+from middleware import require_login, require_admin
+from validators import validate_password, validate_username, sanitize_input, validate_trade_params
+from db_utils import get_db_connection, get_db_cursor
 
 # Load environment variables
 load_dotenv()
-client_id = os.getenv("SPOTIFY_CLIENT_ID")
-client_secret = os.getenv("SPOTIFY_CLIENT_SECRET")
-secret_key = os.getenv("SECRET_KEY", os.urandom(24))
-app.secret_key = secret_key
+
+# Initialize Flask app
+app = Flask(__name__)
+
+# Load configuration
+env = os.getenv('FLASK_ENV', 'development')
+app.config.from_object(config[env])
+
+# Set up rate limiting
+limiter = Limiter(
+    app=app,
+    key_func=get_remote_address,
+    storage_uri=app.config['RATELIMIT_STORAGE_URL'],
+    default_limits=[app.config['RATELIMIT_DEFAULT']]
+)
+
+# Configure logging
+if not app.debug:
+    if not os.path.exists('logs'):
+        os.mkdir('logs')
+    file_handler = RotatingFileHandler(
+        app.config['LOG_FILE'],
+        maxBytes=10240000,
+        backupCount=10
+    )
+    file_handler.setFormatter(logging.Formatter(
+        '%(asctime)s %(levelname)s: %(message)s [in %(pathname)s:%(lineno)d]'
+    ))
+    file_handler.setLevel(logging.INFO)
+    app.logger.addHandler(file_handler)
+    app.logger.setLevel(logging.INFO)
+    app.logger.info('Anticip startup')
+
+# Spotify credentials
+client_id = app.config['SPOTIFY_CLIENT_ID']
+client_secret = app.config['SPOTIFY_CLIENT_SECRET']
 
 # Set up Spotipy
-sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(client_id=client_id, client_secret=client_secret))
+sp = spotipy.Spotify(auth_manager=SpotifyClientCredentials(
+    client_id=client_id,
+    client_secret=client_secret
+))
 
-# Set up PostgreSQL connection pool
-# Parse DATABASE_URL for production or use local config
-database_url = os.getenv("DATABASE_URL")
+# Set up PostgreSQL connection pool with proper configuration
+database_url = app.config['DATABASE_URL']
 if database_url:
     # Parse the DATABASE_URL (Railway provides this)
     result = urlparse(database_url)
     db_pool = psycopg2.pool.SimpleConnectionPool(
-        1, 20,
+        app.config['DB_POOL_MIN'],
+        app.config['DB_POOL_MAX'],
         dbname=result.path[1:],
         user=result.username,
         password=result.password,
         host=result.hostname,
-        port=result.port
+        port=result.port,
+        connect_timeout=10
     )
 else:
     # Local development
     db_pool = psycopg2.pool.SimpleConnectionPool(
-        1, 20,
+        app.config['DB_POOL_MIN'],
+        app.config['DB_POOL_MAX'],
         dbname="anticip_db",
         user="stephencoan",
         password="",
-        host="localhost"
+        host="localhost",
+        connect_timeout=10
     )
 
 # Ensure tables exist
@@ -141,7 +188,7 @@ try:
             WHERE table_name='transactions' AND column_name='total_amount'
         """)
         if not cursor.fetchone():
-            print("Adding missing total_amount column to transactions table...")
+            app.logger.info("Adding missing total_amount column to transactions table...")
             cursor.execute("ALTER TABLE transactions ADD COLUMN total_amount NUMERIC(12, 2)")
             
         # Check if is_admin column exists in users table  
@@ -151,7 +198,7 @@ try:
             WHERE table_name='users' AND column_name='is_admin'
         """)
         if not cursor.fetchone():
-            print("Adding missing is_admin column to users table...")
+            app.logger.info("Adding missing is_admin column to users table...")
             cursor.execute("ALTER TABLE users ADD COLUMN is_admin BOOLEAN DEFAULT FALSE")
             
         # Check if created_at column exists in users table
@@ -161,7 +208,7 @@ try:
             WHERE table_name='users' AND column_name='created_at'
         """)
         if not cursor.fetchone():
-            print("Adding missing created_at column to users table...")
+            app.logger.info("Adding missing created_at column to users table...")
             cursor.execute("ALTER TABLE users ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
             
         # Check if privacy column exists in transactions table
@@ -171,7 +218,7 @@ try:
             WHERE table_name='transactions' AND column_name='privacy'
         """)
         if not cursor.fetchone():
-            print("Adding missing privacy column to transactions table...")
+            app.logger.info("Adding missing privacy column to transactions table...")
             cursor.execute("ALTER TABLE transactions ADD COLUMN privacy VARCHAR(10) DEFAULT 'public' CHECK (privacy IN ('public', 'followers', 'private'))")
             
         # Check if caption column exists in transactions table
@@ -181,11 +228,64 @@ try:
             WHERE table_name='transactions' AND column_name='caption'
         """)
         if not cursor.fetchone():
-            print("Adding missing caption column to transactions table...")
+            app.logger.info("Adding missing caption column to transactions table...")
             cursor.execute("ALTER TABLE transactions ADD COLUMN caption TEXT")
+        
+        # Add database constraints for data integrity
+        app.logger.info("Adding database constraints...")
+        cursor.execute("""
+            DO $$ 
+            BEGIN
+                -- Add constraint to prevent negative balances
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.table_constraints 
+                    WHERE constraint_name = 'check_positive_balance'
+                ) THEN
+                    ALTER TABLE users ADD CONSTRAINT check_positive_balance CHECK (balance >= 0);
+                END IF;
+                
+                -- Add constraint to prevent zero/negative shares in bets
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.table_constraints 
+                    WHERE constraint_name = 'check_positive_shares'
+                ) THEN
+                    ALTER TABLE bets ADD CONSTRAINT check_positive_shares CHECK (shares > 0);
+                END IF;
+                
+                -- Add constraint to prevent zero/negative shares in transactions
+                IF NOT EXISTS (
+                    SELECT 1 FROM information_schema.table_constraints 
+                    WHERE constraint_name = 'check_positive_shares_trans'
+                ) THEN
+                    ALTER TABLE transactions ADD CONSTRAINT check_positive_shares_trans CHECK (shares > 0);
+                END IF;
+            EXCEPTION
+                WHEN OTHERS THEN
+                    NULL; -- Ignore if constraints already exist
+            END $$;
+        """)
+        
+        # Add critical indexes for performance
+        app.logger.info("Creating database indexes...")
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_artist_history_spotify_time 
+                ON artist_history(spotify_id, recorded_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_transactions_user_time 
+                ON transactions(user_id, created_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_bets_user_artist 
+                ON bets(user_id, artist_id);
+            CREATE INDEX IF NOT EXISTS idx_follows_lookup 
+                ON follows(follower_id, followed_id, status);
+            CREATE INDEX IF NOT EXISTS idx_portfolio_history_user_time 
+                ON portfolio_history(user_id, recorded_at DESC);
+            CREATE INDEX IF NOT EXISTS idx_transaction_likes_lookup
+                ON transaction_likes(transaction_id, user_id);
+            CREATE INDEX IF NOT EXISTS idx_transaction_comments_lookup
+                ON transaction_comments(transaction_id, created_at);
+        """)
             
     except Exception as migration_error:
-        print(f"Migration warning: {migration_error}")
+        app.logger.error(f"Migration warning: {migration_error}")
     
     conn.commit()
 except Exception as e:
@@ -195,7 +295,77 @@ finally:
     cursor.close()
     db_pool.putconn(conn)
 
+@app.errorhandler(404)
+def not_found_error(error):
+    """Handle 404 errors"""
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Not found'}), 404
+    return render_template('errors/404.html') if os.path.exists('templates/errors/404.html') else ('Page not found', 404)
+
+
+@app.errorhandler(500)
+def internal_error(error):
+    """Handle 500 errors"""
+    app.logger.error(f'Server Error: {error}', exc_info=True)
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Internal server error'}), 500
+    return render_template('errors/500.html') if os.path.exists('templates/errors/500.html') else ('Internal server error', 500)
+
+
+@app.errorhandler(403)
+def forbidden_error(error):
+    """Handle 403 errors"""
+    if request.path.startswith('/api/'):
+        return jsonify({'error': 'Forbidden'}), 403
+    return render_template('errors/403.html') if os.path.exists('templates/errors/403.html') else ('Forbidden', 403)
+
+
+# Request logging middleware
+@app.before_request
+def before_request():
+    """Log request start time"""
+    from time import time
+    request.start_time = time()
+
+
+@app.after_request
+def after_request(response):
+    """Log request completion"""
+    from time import time
+    if hasattr(request, 'start_time'):
+        elapsed = time() - request.start_time
+        app.logger.info(
+            f'{request.method} {request.path} - {response.status_code} - {elapsed:.3f}s'
+        )
+    return response
+
+
+# Health check endpoint
+@app.route('/health')
+def health_check():
+    """Health check endpoint for load balancers"""
+    try:
+        with get_db_connection(db_pool) as conn:
+            cursor = conn.cursor()
+            cursor.execute('SELECT 1')
+            cursor.close()
+        
+        return jsonify({
+            'status': 'healthy',
+            'database': 'connected',
+            'timestamp': datetime.utcnow().isoformat()
+        }), 200
+    except Exception as e:
+        app.logger.error(f"Health check failed: {str(e)}")
+        return jsonify({
+            'status': 'unhealthy',
+            'error': 'Database connection failed'
+        }), 503
+
+
+# Routes
 @app.route('/')
+@require_login
 def home():
     if 'user_id' not in session:
         return redirect(url_for('login'))
@@ -218,9 +388,8 @@ def home():
         db_pool.putconn(conn)
 
 @app.route('/artists')
+@require_login
 def list_artists():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
     search_query = request.args.get('search', '').lower()
     order = request.args.get('order', 'alphabetical')
     direction = request.args.get('direction', 'asc')
@@ -257,9 +426,8 @@ def list_artists():
 
 # New route for artist detail view
 @app.route('/artist/<spotify_id>')
+@require_login
 def artist_detail(spotify_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
     user_id = session['user_id']
     order = request.args.get('order', 'alphabetical_asc')
     conn = db_pool.getconn()
@@ -336,9 +504,8 @@ def artist_detail(spotify_id):
         db_pool.putconn(conn)
 
 @app.route('/add_artist', methods=['GET', 'POST'])
+@require_login
 def add_artist():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
     if request.method == 'POST':
         artist_name = request.form['artist_name']
         try:
@@ -351,9 +518,8 @@ def add_artist():
     return render_template('add_artist.html')
 
 @app.route('/confirm_add_artist', methods=['POST'])
+@require_login
 def confirm_add_artist():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
     spotify_id = request.form['spotify_id']
     name = request.form['name']
     image_url = request.form.get('image_url')
@@ -375,14 +541,8 @@ def confirm_add_artist():
         db_pool.putconn(conn)
 
 @app.route('/delete_artist/<spotify_id>', methods=['POST'])
+@require_admin
 def delete_artist(spotify_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    
-    # Check if user is admin
-    if not session.get('is_admin', False):
-        return "Access denied. Admin privileges required.", 403
-    
     conn = db_pool.getconn()
     try:
         cursor = conn.cursor()
@@ -434,26 +594,37 @@ def delete_artist(spotify_id):
         db_pool.putconn(conn)
 
 @app.route('/login', methods=['GET', 'POST'])
+@limiter.limit("10 per minute")
 def login():
     if request.method == 'POST':
-        username = request.form['username'].lower()
+        username = request.form['username'].lower().strip()
         password = request.form['password'].encode('utf-8')
+        
+        # Validate username format
+        is_valid, error_msg = validate_username(username)
+        if not is_valid:
+            return render_template('login.html', error=error_msg)
+        
         conn = db_pool.getconn()
         try:
             cursor = conn.cursor()
             cursor.execute("SELECT id, password, username, is_admin, created_at FROM users WHERE username = %s", (username,))
             user = cursor.fetchone()
             if user and bcrypt.checkpw(password, user[1].encode('utf-8')):
+                session.permanent = True
                 session['user_id'] = user[0]
                 session['username'] = user[2]
                 session['is_admin'] = user[3] if user[3] is not None else False
                 session['member_since'] = user[4].strftime('%B %Y') if user[4] else 'Unknown'
-                return redirect(url_for('list_artists'))  # Changed from 'artists' to 'list_artists'
+                app.logger.info(f"User {username} logged in successfully")
+                return redirect(url_for('list_artists'))
             else:
+                app.logger.warning(f"Failed login attempt for username: {username}")
                 return render_template('login.html', error="Invalid username or password")
         except Exception as e:
             conn.rollback()
-            return render_template('login.html', error=str(e))
+            app.logger.error(f"Login error: {str(e)}", exc_info=True)
+            return render_template('login.html', error="An error occurred during login")
         finally:
             cursor.close()
             db_pool.putconn(conn)
@@ -462,9 +633,22 @@ def login():
 @app.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
-        username = request.form['username'].lower()
-        password = request.form['password'].encode('utf-8')
-        hashed = bcrypt.hashpw(password, bcrypt.gensalt()).decode('utf-8')
+        username = request.form['username'].lower().strip()
+        password = request.form['password']
+        
+        # Validate username
+        is_valid, error_msg = validate_username(username)
+        if not is_valid:
+            return render_template('register.html', error=error_msg)
+        
+        # Validate password
+        is_valid, error_msg = validate_password(password)
+        if not is_valid:
+            return render_template('register.html', error=error_msg)
+        
+        # Hash password
+        hashed = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
+        
         conn = db_pool.getconn()
         try:
             cursor = conn.cursor()
@@ -473,14 +657,22 @@ def register():
             user_id = result[0]
             created_at = result[1]
             conn.commit()
+            
+            session.permanent = True
             session['user_id'] = user_id
             session['username'] = username
             session['is_admin'] = False  # New users are not admin by default
             session['member_since'] = created_at.strftime('%B %Y') if created_at else 'Unknown'
-            return redirect(url_for('list_artists'))  # Changed from 'artists' to 'list_artists'
+            
+            app.logger.info(f"New user registered: {username}")
+            return redirect(url_for('list_artists'))
+        except psycopg2.errors.UniqueViolation:
+            conn.rollback()
+            return render_template('register.html', error="Username already exists")
         except Exception as e:
             conn.rollback()
-            return render_template('register.html', error=str(e))
+            app.logger.error(f"Registration error: {str(e)}", exc_info=True)
+            return render_template('register.html', error="Registration failed. Please try again.")
         finally:
             cursor.close()
             db_pool.putconn(conn)
@@ -495,9 +687,8 @@ def logout():
     return redirect(url_for('login'))
 
 @app.route('/refresh_data', methods=['POST'])
+@require_admin
 def refresh_data():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
     conn = db_pool.getconn()
     try:
         cursor = conn.cursor()
@@ -563,121 +754,199 @@ def refresh_data():
     return redirect(url_for('list_artists'))
 
 @app.route('/buy/<spotify_id>', methods=['POST'])
+@require_login
 def buy_artist(spotify_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
     user_id = session['user_id']
     shares = int(request.form.get('shares', 0))
-    caption = request.form.get('caption', '').strip()
+    caption = sanitize_input(request.form.get('caption', ''), max_length=500)
     privacy = request.form.get('privacy', 'public')
     
-    if shares <= 0:
-        return "Invalid share amount", 400
-    if privacy not in ['public', 'followers', 'private']:
-        privacy = 'public'
+    # Validate inputs
+    is_valid, error_msg = validate_trade_params(shares, 'buy', privacy)
+    if not is_valid:
+        return error_msg, 400
         
     conn = db_pool.getconn()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM artists WHERE spotify_id = %s", (spotify_id,))
+        
+        # START ATOMIC TRANSACTION WITH ROW LOCKING
+        cursor.execute("BEGIN")
+        
+        # Get artist with lock
+        cursor.execute(
+            "SELECT id FROM artists WHERE spotify_id = %s FOR UPDATE", 
+            (spotify_id,)
+        )
         artist_row = cursor.fetchone()
         if not artist_row:
+            conn.rollback()
             return "Artist not found", 404
         artist_id = artist_row[0]
         
-        cursor.execute("SELECT price FROM artist_history WHERE spotify_id = %s ORDER BY recorded_at DESC LIMIT 1", (spotify_id,))
+        # Get current price
+        cursor.execute(
+            "SELECT price FROM artist_history WHERE spotify_id = %s "
+            "ORDER BY recorded_at DESC LIMIT 1", 
+            (spotify_id,)
+        )
         price_row = cursor.fetchone()
         if not price_row:
+            conn.rollback()
             return "No price data", 400
         price = float(price_row[0])
         total_cost = shares * price
         
-        # Check user balance
-        cursor.execute("SELECT balance FROM users WHERE id = %s", (user_id,))
+        # Check and update balance with lock
+        cursor.execute(
+            "SELECT balance FROM users WHERE id = %s FOR UPDATE", 
+            (user_id,)
+        )
         balance_row = cursor.fetchone()
         balance = float(balance_row[0]) if balance_row else 0.0
+        
         if balance < total_cost:
+            conn.rollback()
             return "Insufficient funds", 400
             
         # Deduct balance
-        cursor.execute("UPDATE users SET balance = balance - %s WHERE id = %s", (total_cost, user_id))
+        cursor.execute(
+            "UPDATE users SET balance = balance - %s WHERE id = %s", 
+            (total_cost, user_id)
+        )
         
-        # Check if user already owns shares
-        cursor.execute("SELECT id, shares, avg_price FROM bets WHERE user_id = %s AND artist_id = %s", (user_id, artist_id))
+        # Update holdings
+        cursor.execute(
+            "SELECT id, shares, avg_price FROM bets "
+            "WHERE user_id = %s AND artist_id = %s FOR UPDATE", 
+            (user_id, artist_id)
+        )
         bet = cursor.fetchone()
+        
         if bet:
             bet_id, current_shares, current_avg = bet
             total_shares = current_shares + shares
             new_avg = ((current_shares * current_avg) + (shares * price)) / total_shares
-            cursor.execute("UPDATE bets SET shares = %s, avg_price = %s, timestamp = NOW() WHERE id = %s", (total_shares, new_avg, bet_id))
+            cursor.execute(
+                "UPDATE bets SET shares = %s, avg_price = %s, timestamp = NOW() "
+                "WHERE id = %s", 
+                (total_shares, new_avg, bet_id)
+            )
         else:
-            cursor.execute("INSERT INTO bets (user_id, artist_id, shares, avg_price) VALUES (%s, %s, %s, %s)", (user_id, artist_id, shares, price))
+            cursor.execute(
+                "INSERT INTO bets (user_id, artist_id, shares, avg_price) "
+                "VALUES (%s, %s, %s, %s)", 
+                (user_id, artist_id, shares, price)
+            )
         
-        # Record the transaction
+        # Record transaction
         cursor.execute("""
-            INSERT INTO transactions (user_id, artist_id, transaction_type, shares, price_per_share, total_amount, total_value, caption, privacy)
-            VALUES (%s, %s, 'buy', %s, %s, %s, %s, %s, %s)
-        """, (user_id, artist_id, shares, price, total_cost, total_cost, caption, privacy))
+            INSERT INTO transactions 
+            (user_id, artist_id, transaction_type, shares, price_per_share, 
+             total_amount, caption, privacy)
+            VALUES (%s, %s, 'buy', %s, %s, %s, %s, %s)
+        """, (user_id, artist_id, shares, price, total_cost, caption, privacy))
         
+        # COMMIT ATOMIC TRANSACTION
         conn.commit()
+        app.logger.info(f"User {user_id} bought {shares} shares of artist {artist_id} for ${total_cost}")
         return redirect(url_for('artist_detail', spotify_id=spotify_id))
+        
     except Exception as e:
         conn.rollback()
-        return f"Database error: {str(e)}", 500
+        app.logger.error(f"Buy error: {str(e)}", exc_info=True)
+        return f"Transaction failed. Please try again.", 500
     finally:
         cursor.close()
         db_pool.putconn(conn)
 
 @app.route('/sell/<spotify_id>', methods=['POST'])
+@require_login
 def sell_artist(spotify_id):
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
     user_id = session['user_id']
     shares = int(request.form.get('shares', 0))
-    caption = request.form.get('caption', '').strip()
+    caption = sanitize_input(request.form.get('caption', ''), max_length=500)
     privacy = request.form.get('privacy', 'public')
     
-    if shares <= 0:
-        return "Invalid share amount", 400
-    if privacy not in ['public', 'followers', 'private']:
-        privacy = 'public'
+    # Validate inputs
+    is_valid, error_msg = validate_trade_params(shares, 'sell', privacy)
+    if not is_valid:
+        return error_msg, 400
         
     conn = db_pool.getconn()
     try:
         cursor = conn.cursor()
-        cursor.execute("SELECT id FROM artists WHERE spotify_id = %s", (spotify_id,))
+        
+        # START ATOMIC TRANSACTION WITH ROW LOCKING
+        cursor.execute("BEGIN")
+        
+        # Get artist with lock
+        cursor.execute(
+            "SELECT id FROM artists WHERE spotify_id = %s FOR UPDATE",
+            (spotify_id,)
+        )
         artist_row = cursor.fetchone()
         if not artist_row:
+            conn.rollback()
             return "Artist not found", 404
         artist_id = artist_row[0]
-        cursor.execute("SELECT price FROM artist_history WHERE spotify_id = %s ORDER BY recorded_at DESC LIMIT 1", (spotify_id,))
+        
+        # Get current price
+        cursor.execute(
+            "SELECT price FROM artist_history WHERE spotify_id = %s "
+            "ORDER BY recorded_at DESC LIMIT 1",
+            (spotify_id,)
+        )
         price_row = cursor.fetchone()
         price = float(price_row[0]) if price_row else 0.0
         total_value = shares * price
-        cursor.execute("SELECT id, shares, avg_price FROM bets WHERE user_id = %s AND artist_id = %s", (user_id, artist_id))
+        
+        # Check holdings with lock
+        cursor.execute(
+            "SELECT id, shares, avg_price FROM bets "
+            "WHERE user_id = %s AND artist_id = %s FOR UPDATE",
+            (user_id, artist_id)
+        )
         bet = cursor.fetchone()
         if not bet or bet[1] < shares:
+            conn.rollback()
             return "Not enough shares to sell", 400
+            
         bet_id, current_shares, avg_price = bet
         new_shares = current_shares - shares
+        
+        # Update or delete bet
         if new_shares > 0:
-            cursor.execute("UPDATE bets SET shares = %s, timestamp = NOW() WHERE id = %s", (new_shares, bet_id))
+            cursor.execute(
+                "UPDATE bets SET shares = %s, timestamp = NOW() WHERE id = %s",
+                (new_shares, bet_id)
+            )
         else:
             cursor.execute("DELETE FROM bets WHERE id = %s", (bet_id,))
+        
         # Add balance
-        cursor.execute("UPDATE users SET balance = balance + %s WHERE id = %s", (total_value, user_id))
+        cursor.execute(
+            "UPDATE users SET balance = balance + %s WHERE id = %s",
+            (total_value, user_id)
+        )
         
-        # Record the transaction
+        # Record transaction
         cursor.execute("""
-            INSERT INTO transactions (user_id, artist_id, transaction_type, shares, price_per_share, total_amount, total_value, caption, privacy)
-            VALUES (%s, %s, 'sell', %s, %s, %s, %s, %s, %s)
-        """, (user_id, artist_id, shares, price, total_value, total_value, caption, privacy))
+            INSERT INTO transactions 
+            (user_id, artist_id, transaction_type, shares, price_per_share,
+             total_amount, caption, privacy)
+            VALUES (%s, %s, 'sell', %s, %s, %s, %s, %s)
+        """, (user_id, artist_id, shares, price, total_value, caption, privacy))
         
+        # COMMIT ATOMIC TRANSACTION
         conn.commit()
+        app.logger.info(f"User {user_id} sold {shares} shares of artist {artist_id} for ${total_value}")
         return redirect(url_for('artist_detail', spotify_id=spotify_id))
+        
     except Exception as e:
         conn.rollback()
-        return f"Database error: {str(e)}", 500
+        app.logger.error(f"Sell error: {str(e)}", exc_info=True)
+        return f"Transaction failed. Please try again.", 500
     finally:
         cursor.close()
         db_pool.putconn(conn)
