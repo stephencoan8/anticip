@@ -365,27 +365,11 @@ def health_check():
 
 # Routes
 @app.route('/')
-@require_login
 def home():
-    if 'user_id' not in session:
-        return redirect(url_for('login'))
-    conn = db_pool.getconn()
-    try:
-        cursor = conn.cursor()
-        artist = sp.artist("3WrFJ7ztbogyGnTHbHJFl2")
-        cursor.execute("INSERT INTO artists (spotify_id, name, image_url) VALUES (%s, %s, %s) ON CONFLICT (spotify_id) DO UPDATE SET name = EXCLUDED.name, image_url = EXCLUDED.image_url",
-                    (artist['id'], artist['name'], artist['images'][0]['url'] if artist['images'] else None))
-        price = artist['popularity']
-        cursor.execute("INSERT INTO artist_history (spotify_id, popularity, price) VALUES (%s, %s, %s)",
-                    (artist['id'], artist['popularity'], price))
-        conn.commit()
-        return f"Artist: {artist['name']}, Popularity: {artist['popularity']}, Stock Price: ${price:.2f}"
-    except Exception as e:
-        conn.rollback()
-        return f"Database error: {str(e)}", 500
-    finally:
-        cursor.close()
-        db_pool.putconn(conn)
+    """Home page - redirect to feed if logged in, otherwise to login."""
+    if 'user_id' in session:
+        return redirect(url_for('feed'))
+    return redirect(url_for('login'))
 
 @app.route('/artists')
 @require_login
