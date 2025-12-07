@@ -31,32 +31,54 @@ def run_migration():
         cursor = conn.cursor()
         
         print("🔄 Checking database schema...")
+        migration_needed = False
         
-        # Check if bets table has avg_popularity (correct) or avg_price (old)
+        # 1. Check BETS table: avg_popularity (correct) or avg_price (old)
+        print("\n📋 Checking BETS table...")
         has_avg_popularity = check_column_exists(cursor, 'bets', 'avg_popularity')
         has_avg_price = check_column_exists(cursor, 'bets', 'avg_price')
         
-        if has_avg_popularity and not has_avg_price:
-            print("✅ Database schema is correct (has avg_popularity)")
-            cursor.close()
-            conn.close()
-            return True
-            
         if has_avg_price and not has_avg_popularity:
-            print("🔄 Migrating: Renaming avg_price → avg_popularity...")
+            print("   🔄 Migrating: Renaming avg_price → avg_popularity...")
             cursor.execute("ALTER TABLE bets RENAME COLUMN avg_price TO avg_popularity;")
-            print("✅ Migration complete!")
-            
-        if has_avg_price and has_avg_popularity:
-            print("⚠️  Both columns exist, dropping old avg_price column...")
+            print("   ✅ Bets migration complete!")
+            migration_needed = True
+        elif has_avg_price and has_avg_popularity:
+            print("   ⚠️  Both columns exist, dropping old avg_price column...")
             cursor.execute("ALTER TABLE bets DROP COLUMN avg_price CASCADE;")
-            print("✅ Cleanup complete!")
-            
-        if not has_avg_price and not has_avg_popularity:
-            print("❌ ERROR: bets table missing both avg_price and avg_popularity columns!")
-            cursor.close()
-            conn.close()
+            print("   ✅ Bets cleanup complete!")
+            migration_needed = True
+        elif has_avg_popularity:
+            print("   ✅ Bets table correct (has avg_popularity)")
+        else:
+            print("   ❌ ERROR: bets table missing avg_popularity column!")
             return False
+        
+        # 2. Check TRANSACTIONS table: popularity_per_share (correct) or price_per_share (old)
+        print("\n📋 Checking TRANSACTIONS table...")
+        has_popularity_per_share = check_column_exists(cursor, 'transactions', 'popularity_per_share')
+        has_price_per_share = check_column_exists(cursor, 'transactions', 'price_per_share')
+        
+        if has_price_per_share and not has_popularity_per_share:
+            print("   🔄 Migrating: Renaming price_per_share → popularity_per_share...")
+            cursor.execute("ALTER TABLE transactions RENAME COLUMN price_per_share TO popularity_per_share;")
+            print("   ✅ Transactions migration complete!")
+            migration_needed = True
+        elif has_price_per_share and has_popularity_per_share:
+            print("   ⚠️  Both columns exist, dropping old price_per_share column...")
+            cursor.execute("ALTER TABLE transactions DROP COLUMN price_per_share CASCADE;")
+            print("   ✅ Transactions cleanup complete!")
+            migration_needed = True
+        elif has_popularity_per_share:
+            print("   ✅ Transactions table correct (has popularity_per_share)")
+        else:
+            print("   ❌ ERROR: transactions table missing popularity_per_share column!")
+            return False
+        
+        if not migration_needed:
+            print("\n✅ All database schemas are correct - no migration needed")
+        else:
+            print("\n✅ All migrations completed successfully")
             
         cursor.close()
         conn.close()
