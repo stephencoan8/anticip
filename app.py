@@ -1425,7 +1425,7 @@ def feed():
         if view_mode == 'public':
             # Show all public transactions
             cursor.execute("""
-                SELECT t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
+                SELECT t.id, t.transaction_type, t.shares, t.price_per_share, t.total_amount, 
                        t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id,
                        COUNT(tl.id) as like_count,
                        COUNT(tc.id) as comment_count,
@@ -1438,7 +1438,7 @@ def feed():
                 LEFT JOIN transaction_likes tl ON t.id = tl.transaction_id
                 LEFT JOIN transaction_comments tc ON t.id = tc.transaction_id
                 WHERE t.privacy = 'public'
-                GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
+                GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_amount, 
                          t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id, t.privacy
                 ORDER BY t.created_at DESC
                 LIMIT 50
@@ -1446,7 +1446,7 @@ def feed():
         elif view_mode == 'self':
             # Show only current user's transactions
             cursor.execute("""
-                SELECT t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
+                SELECT t.id, t.transaction_type, t.shares, t.price_per_share, t.total_amount, 
                        t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id,
                        COUNT(tl.id) as like_count,
                        COUNT(tc.id) as comment_count,
@@ -1459,7 +1459,7 @@ def feed():
                 LEFT JOIN transaction_likes tl ON t.id = tl.transaction_id
                 LEFT JOIN transaction_comments tc ON t.id = tc.transaction_id
                 WHERE t.user_id = %s
-                GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
+                GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_amount, 
                          t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id, t.privacy
                 ORDER BY t.created_at DESC
                 LIMIT 50
@@ -1467,7 +1467,7 @@ def feed():
         else:  # followers
             # Show transactions from users the current user follows + their own
             cursor.execute("""
-                SELECT t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
+                SELECT t.id, t.transaction_type, t.shares, t.price_per_share, t.total_amount, 
                        t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id,
                        COUNT(tl.id) as like_count,
                        COUNT(tc.id) as comment_count,
@@ -1489,7 +1489,7 @@ def feed():
                            SELECT followed_id FROM follows 
                            WHERE follower_id = %s AND status = 'accepted'
                        ))))
-                GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_value, 
+                GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_amount, 
                          t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id, t.privacy
                 ORDER BY t.created_at DESC
                 LIMIT 50
