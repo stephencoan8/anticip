@@ -176,8 +176,8 @@
                     <!-- Portfolio Stats -->
                     <div class="space-y-1 text-sm">
                         <div class="themed-text-secondary">Shares: <span class="font-bold themed-text">{{ holding.shares or 0 }}</span></div>
-                        <div class="themed-text-secondary">Avg. Popularity: <span class="themed-text">{{ (holding.avg_price or 0) | round(0) | int }}</span></div>
-                        <div class="themed-text-secondary">Current Popularity: <span class="themed-text">{{ (holding.current_price or 0) | round(0) | int }}</span></div>
+                        <div class="themed-text-secondary">Avg. Popularity: <span class="themed-text">{{ (holding.avg_popularity or 0) | round(0) | int }}</span></div>
+                        <div class="themed-text-secondary">Current Popularity: <span class="themed-text">{{ (holding.current_popularity or 0) | round(0) | int }}</span></div>
                         <div class="themed-text-secondary">Value: <span class="themed-text">{{ (holding.value or 0) | round(0) | int }} pts</span></div>
                         <div class="themed-text-secondary">Gain/Loss: <span class="font-bold {% if (holding.gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ (holding.gain or 0) | round(0) | int }} pts</span></div>
                     </div>
@@ -261,10 +261,10 @@
                             <span class="font-medium themed-text">{{ holding.shares or 0 }}</span>
                         </div>
                         <div class="col-span-1">
-                            <span class="themed-text">{{ (holding.avg_price or 0) | round(0) | int }}</span>
+                            <span class="themed-text">{{ (holding.avg_popularity or 0) | round(0) | int }}</span>
                         </div>
                         <div class="col-span-1">
-                            <span class="themed-text">{{ (holding.current_price or 0) | round(0) | int }}</span>
+                            <span class="themed-text">{{ (holding.current_popularity or 0) | round(0) | int }}</span>
                         </div>
                         <div class="col-span-2">
                             <span class="font-medium themed-text">{{ (holding.value or 0) | round(0) | int }} pts</span>

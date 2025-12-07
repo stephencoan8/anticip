@@ -1100,8 +1100,8 @@ def portfolio(user_id=None):
                 holding = {
                     'name': name,
                     'shares': shares,
-                    'avg_price': avg_popularity,
-                    'current_price': current_popularity,
+                    'avg_popularity': avg_popularity,
+                    'current_popularity': current_popularity,
                     'value': value,
                     'gain': gain,
                     'percent_gain': percent_gain,
