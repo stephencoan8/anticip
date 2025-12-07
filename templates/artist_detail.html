@@ -89,9 +89,9 @@
                 <h2 class="text-xl font-semibold themed-text mb-4">Your Holdings</h2>
                 {% if holdings %}
                     {% set shares = holdings[0] %}
-                    {% set avg_price = holdings[1] %}
-                    {% set value = shares * current_price %}
-                    {% set cost = shares * avg_price %}
+                    {% set avg_popularity = holdings[1] %}
+                    {% set value = shares * current_popularity %}
+                    {% set cost = shares * avg_popularity %}
                     {% set gain = value - cost %}
                     
                     <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
@@ -100,12 +100,12 @@
                             <div class="text-xl font-bold themed-text">{{ shares }}</div>
                         </div>
                         <div class="themed-bg-tertiary p-4 rounded-lg transition-colors duration-300">
-                            <div class="themed-text-secondary text-sm">Avg. Price</div>
-                            <div class="text-xl font-bold themed-text">{{ avg_price | float | round(0) | int }} pts</div>
+                            <div class="themed-text-secondary text-sm">Avg. Popularity</div>
+                            <div class="text-xl font-bold themed-text">{{ avg_popularity | float | round(0) | int }}</div>
                         </div>
                         <div class="themed-bg-tertiary p-4 rounded-lg transition-colors duration-300">
-                            <div class="themed-text-secondary text-sm">Current Price</div>
-                            <div class="text-xl font-bold themed-text">{{ current_price | float | round(0) | int }} pts</div>
+                            <div class="themed-text-secondary text-sm">Current Popularity</div>
+                            <div class="text-xl font-bold themed-text">{{ current_popularity | float | round(0) | int }}</div>
                         </div>
                         <div class="themed-bg-tertiary p-4 rounded-lg transition-colors duration-300">
                             <div class="themed-text-secondary text-sm">Current Value</div>
@@ -163,10 +163,10 @@
         </div>
         {% endif %}
 
-        <!-- Price Chart -->
+        <!-- Popularity Chart -->
         <div class="themed-bg p-6 rounded-lg themed-shadow transition-colors duration-300">
             <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-semibold themed-text">Stock Price History</h2>
+                <h2 class="text-xl font-semibold themed-text">Popularity History</h2>
                 
                 <!-- Time Range Buttons -->
                 <div class="flex gap-2">
@@ -319,7 +319,7 @@
                         y: {
                             title: {
                                 display: true,
-                                text: 'Price (pts)',
+                                text: 'Popularity',
                                 color: textColor
                             },
                             ticks: {

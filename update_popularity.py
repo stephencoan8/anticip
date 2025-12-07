@@ -48,13 +48,12 @@ def update_artist_popularity(spotify_id, name):
         # Get current artist info from Spotify
         artist = sp.artist(spotify_id)
         popularity = artist['popularity']
-        price = float(popularity)
         
-        # Insert new price history entry
+        # Insert new popularity history entry
         cursor.execute("""
-            INSERT INTO artist_history (spotify_id, popularity, price, recorded_at) 
-            VALUES (%s, %s, %s, NOW())
-        """, (spotify_id, popularity, price))
+            INSERT INTO artist_history (spotify_id, popularity, recorded_at) 
+            VALUES (%s, %s, NOW())
+        """, (spotify_id, popularity))
         
         conn.commit()
         return popularity, True

@@ -84,7 +84,7 @@
         {% if request.args.get('view') != 'list' %}
         <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
             {% if records %}
-                {% for spotify_id, name, popularity, price, recorded_at, image_url in records %}
+                {% for spotify_id, name, popularity, recorded_at, image_url in records %}
                 <a href="/artist/{{ spotify_id }}" class="block">
                     <div class="themed-bg p-4 rounded-lg themed-shadow hover:shadow-lg transition-all duration-300">
                         {% if image_url %}
@@ -94,7 +94,6 @@
                         {% endif %}
                         <h2 class="text-xl font-semibold themed-text">{{ name }}</h2>
                         <p class="themed-text-secondary">Popularity: {{ popularity }}</p>
-                        <p class="themed-text-secondary">Stock Price: {{ price | float | round(0) | int }} pts</p>
                         <p class="themed-text-tertiary text-sm">Last Updated: {{ recorded_at.strftime('%Y-%m-%d %H:%M:%S') }}</p>
                     </div>
                 </a>
@@ -112,16 +111,15 @@
             <div class="themed-bg-tertiary px-6 py-3 border-b themed-border">
                 <div class="grid grid-cols-12 gap-4 text-sm font-medium themed-text-secondary">
                     <div class="col-span-1"></div> <!-- Image column -->
-                    <div class="col-span-4">Artist</div>
-                    <div class="col-span-2">Popularity</div>
-                    <div class="col-span-2">Stock Price</div>
+                    <div class="col-span-5">Artist</div>
+                    <div class="col-span-3">Popularity</div>
                     <div class="col-span-3">Last Updated</div>
                 </div>
             </div>
             
             <!-- Rows -->
             <div class="divide-y themed-border">
-                {% for spotify_id, name, popularity, price, recorded_at, image_url in records %}
+                {% for spotify_id, name, popularity, recorded_at, image_url in records %}
                 <a href="/artist/{{ spotify_id }}" class="block themed-hover transition-colors duration-200">
                     <div class="px-6 py-4">
                         <div class="grid grid-cols-12 gap-4 items-center">
@@ -136,14 +134,11 @@
                                     </div>
                                 {% endif %}
                             </div>
-                            <div class="col-span-4">
+                            <div class="col-span-5">
                                 <h3 class="text-lg font-semibold themed-text">{{ name }}</h3>
                             </div>
-                            <div class="col-span-2">
-                                <span class="themed-text">{{ popularity }}</span>
-                            </div>
-                            <div class="col-span-2">
-                                <span class="font-medium themed-text">{{ price | float | round(0) | int }} pts</span>
+                            <div class="col-span-3">
+                                <span class="themed-text font-medium">{{ popularity }}</span>
                             </div>
                             <div class="col-span-3">
                                 <span class="themed-text-tertiary text-sm">{{ recorded_at.strftime('%Y-%m-%d %H:%M:%S') }}</span>

@@ -176,8 +176,8 @@
                     <!-- Portfolio Stats -->
                     <div class="space-y-1 text-sm">
                         <div class="themed-text-secondary">Shares: <span class="font-bold themed-text">{{ holding.shares or 0 }}</span></div>
-                        <div class="themed-text-secondary">Avg. Price: <span class="themed-text">{{ (holding.avg_price or 0) | round(0) | int }} pts</span></div>
-                        <div class="themed-text-secondary">Current Price: <span class="themed-text">{{ (holding.current_price or 0) | round(0) | int }} pts</span></div>
+                        <div class="themed-text-secondary">Avg. Popularity: <span class="themed-text">{{ (holding.avg_price or 0) | round(0) | int }}</span></div>
+                        <div class="themed-text-secondary">Current Popularity: <span class="themed-text">{{ (holding.current_price or 0) | round(0) | int }}</span></div>
                         <div class="themed-text-secondary">Value: <span class="themed-text">{{ (holding.value or 0) | round(0) | int }} pts</span></div>
                         <div class="themed-text-secondary">Gain/Loss: <span class="font-bold {% if (holding.gain or 0) >= 0 %}text-green-600{% else %}text-red-600{% endif %}">{{ (holding.gain or 0) | round(0) | int }} pts</span></div>
                     </div>
@@ -229,8 +229,8 @@
                     <div class="col-span-1"></div> <!-- Image column -->
                     <div class="col-span-3">Artist</div>
                     <div class="col-span-1">Shares</div>
-                    <div class="col-span-1">Avg. Price</div>
-                    <div class="col-span-1">Current Price</div>
+                    <div class="col-span-1">Avg. Pop.</div>
+                    <div class="col-span-1">Current Pop.</div>
                     <div class="col-span-2">Value</div>
                     <div class="col-span-2">Gain/Loss</div>
                     <div class="col-span-1">Actions</div>
@@ -261,10 +261,10 @@
                             <span class="font-medium themed-text">{{ holding.shares or 0 }}</span>
                         </div>
                         <div class="col-span-1">
-                            <span class="themed-text">{{ (holding.avg_price or 0) | round(0) | int }} pts</span>
+                            <span class="themed-text">{{ (holding.avg_price or 0) | round(0) | int }}</span>
                         </div>
                         <div class="col-span-1">
-                            <span class="themed-text">{{ (holding.current_price or 0) | round(0) | int }} pts</span>
+                            <span class="themed-text">{{ (holding.current_price or 0) | round(0) | int }}</span>
                         </div>
                         <div class="col-span-2">
                             <span class="font-medium themed-text">{{ (holding.value or 0) | round(0) | int }} pts</span>
@@ -340,9 +340,9 @@
                         <div class="col-span-2">Artist</div>
                         <div class="col-span-1">Type</div>
                         <div class="col-span-1">Shares</div>
-                        <div class="col-span-1">Price</div>
-                        <div class="col-span-2">Total Amount</div>
                         <div class="col-span-1">Popularity</div>
+                        <div class="col-span-2">Total Amount</div>
+                        <div class="col-span-1">At Popularity</div>
                         <div class="col-span-3">Date</div>
                     </div>
                 </div>
@@ -376,7 +376,7 @@
                                 <span class="themed-text">{{ trade.shares }}</span>
                             </div>
                             <div class="col-span-1">
-                                <span class="themed-text">{{ trade.price_per_share | round(1) }}</span>
+                                <span class="themed-text">{{ trade.popularity }}</span>
                             </div>
                             <div class="col-span-2">
                                 <span class="font-medium themed-text">
@@ -384,7 +384,7 @@
                                 </span>
                             </div>
                             <div class="col-span-1">
-                                <span class="themed-text">{{ trade.popularity }}</span>
+                                <span class="themed-text">{{ trade.price_per_share | round(1) }}</span>
                             </div>
                             <div class="col-span-3">
                                 <span class="themed-text-tertiary text-sm">

@@ -121,7 +121,7 @@ try:
             user_id INTEGER REFERENCES users(id),
             artist_id INTEGER REFERENCES artists(id),
             shares INTEGER NOT NULL,
-            avg_price NUMERIC(10, 2) NOT NULL,
+            avg_popularity NUMERIC(10, 2) NOT NULL,
             timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         );
         CREATE TABLE IF NOT EXISTS follows (
@@ -149,7 +149,7 @@ try:
             artist_id INTEGER REFERENCES artists(id),
             transaction_type VARCHAR(4) CHECK (transaction_type IN ('buy', 'sell')),
             shares INTEGER NOT NULL,
-            price_per_share NUMERIC(10, 2) NOT NULL,
+            popularity_per_share NUMERIC(10, 2) NOT NULL,
             total_amount NUMERIC(12, 2) NOT NULL,
             caption TEXT,
             privacy VARCHAR(10) DEFAULT 'public' CHECK (privacy IN ('public', 'followers', 'private')),
@@ -380,9 +380,9 @@ def list_artists():
     conn = db_pool.getconn()
     try:
         cursor = conn.cursor()
-        # Get only the latest price for each artist
+        # Get only the latest popularity for each artist
         query = """
-            SELECT a.spotify_id, a.name, ah.popularity, ah.price, ah.recorded_at, a.image_url
+            SELECT a.spotify_id, a.name, ah.popularity, ah.recorded_at, a.image_url
             FROM artists a
             JOIN LATERAL (
                 SELECT * FROM artist_history ah2
@@ -399,7 +399,7 @@ def list_artists():
         if order == 'alphabetical':
             records.sort(key=lambda x: x[1], reverse=reverse)  # x[1] is name
         elif order == 'popularity':
-            records.sort(key=lambda x: x[2], reverse=reverse)  # x[2] is popularity
+            records.sort(key=lambda x: x[2] if x[2] is not None else 0, reverse=reverse)  # x[2] is popularity
         return render_template('artists.html', records=records, search_query=search_query, order=order, direction=direction)
     except Exception as e:
         conn.rollback()
@@ -457,27 +457,27 @@ def artist_detail(spotify_id):
                 'recent_albums': []
             }
         
-        # Get historical prices
-        cursor.execute("SELECT recorded_at, price FROM artist_history WHERE spotify_id = %s ORDER BY recorded_at ASC", (spotify_id,))
+        # Get historical popularity
+        cursor.execute("SELECT recorded_at, popularity FROM artist_history WHERE spotify_id = %s ORDER BY recorded_at ASC", (spotify_id,))
         history = cursor.fetchall()
         # Get user holdings
-        cursor.execute("SELECT shares, avg_price FROM bets WHERE user_id = %s AND artist_id = %s", (user_id, artist_id))
+        cursor.execute("SELECT shares, avg_popularity FROM bets WHERE user_id = %s AND artist_id = %s", (user_id, artist_id))
         holdings = cursor.fetchone()
         if holdings:
             shares = int(holdings[0])
-            avg_price = float(holdings[1])
-            holdings = (shares, avg_price)
-        # Get current price
-        cursor.execute("SELECT price FROM artist_history WHERE spotify_id = %s ORDER BY recorded_at DESC LIMIT 1", (spotify_id,))
-        price_row = cursor.fetchone()
-        current_price = float(price_row[0]) if price_row else None
+            avg_popularity = float(holdings[1])
+            holdings = (shares, avg_popularity)
+        # Get current popularity
+        cursor.execute("SELECT popularity FROM artist_history WHERE spotify_id = %s ORDER BY recorded_at DESC LIMIT 1", (spotify_id,))
+        popularity_row = cursor.fetchone()
+        current_popularity = float(popularity_row[0]) if popularity_row else None
         # For artist detail, just pass order to template for dropdown (no sorting needed)
         return render_template('artist_detail.html', 
                              artist=(name, image_url), 
                              spotify_id=spotify_id,
                              history=history, 
                              holdings=holdings, 
-                             current_price=current_price, 
+                             current_popularity=current_popularity, 
                              order=order,
                              spotify_info=spotify_info)
     except Exception as e:
@@ -531,12 +531,12 @@ def confirm_add_artist():
             # Get artist albums
             albums = sp.artist_albums(spotify_id, album_type='album', limit=5)
             
-            # Insert initial price history
-            price = artist_data.get('popularity', 0)
+            # Insert initial popularity history
+            popularity = artist_data.get('popularity', 0)
             cursor.execute("""
-                INSERT INTO artist_history (spotify_id, popularity, price) 
-                VALUES (%s, %s, %s)
-            """, (spotify_id, artist_data.get('popularity', 0), price))
+                INSERT INTO artist_history (spotify_id, popularity) 
+                VALUES (%s, %s)
+            """, (spotify_id, popularity))
             
             # Insert complete Spotify data (genres, followers, tracks, albums, etc.)
             cursor.execute("""
@@ -566,11 +566,11 @@ def confirm_add_artist():
         except Exception as spotify_error:
             # If Spotify fetch fails, log but don't fail the whole operation
             app.logger.error(f"Error fetching Spotify data for {spotify_id}: {str(spotify_error)}")
-            # Still insert basic price history even if extended data fails
+            # Still insert basic popularity history even if extended data fails
             cursor.execute("""
-                INSERT INTO artist_history (spotify_id, popularity, price) 
-                VALUES (%s, %s, %s)
-            """, (spotify_id, 0, 0))
+                INSERT INTO artist_history (spotify_id, popularity) 
+                VALUES (%s, %s)
+            """, (spotify_id, 0))
         
         conn.commit()
         return redirect(url_for('list_artists'))
@@ -750,10 +750,10 @@ def refresh_data():
                 # Get artist albums
                 albums = sp.artist_albums(spotify_id, album_type='album', limit=5)
                 
-                # Update price history (keep this as before)
-                price = artist_data['popularity']
-                cursor.execute("INSERT INTO artist_history (spotify_id, popularity, price) VALUES (%s, %s, %s)",
-                               (spotify_id, artist_data['popularity'], price))
+                # Update popularity history
+                popularity = artist_data['popularity']
+                cursor.execute("INSERT INTO artist_history (spotify_id, popularity) VALUES (%s, %s)",
+                               (spotify_id, popularity))
                 
                 # Update/insert spotify data
                 cursor.execute("""
@@ -827,18 +827,18 @@ def buy_artist(spotify_id):
             return "Artist not found", 404
         artist_id = artist_row[0]
         
-        # Get current price
+        # Get current popularity
         cursor.execute(
-            "SELECT price FROM artist_history WHERE spotify_id = %s "
+            "SELECT popularity FROM artist_history WHERE spotify_id = %s "
             "ORDER BY recorded_at DESC LIMIT 1", 
             (spotify_id,)
         )
-        price_row = cursor.fetchone()
-        if not price_row:
+        popularity_row = cursor.fetchone()
+        if not popularity_row:
             conn.rollback()
-            return "No price data", 400
-        price = float(price_row[0])
-        total_cost = shares * price
+            return "No popularity data", 400
+        popularity = float(popularity_row[0])
+        total_cost = shares * popularity
         
         # Check and update balance with lock
         cursor.execute(
@@ -860,7 +860,7 @@ def buy_artist(spotify_id):
         
         # Update holdings
         cursor.execute(
-            "SELECT id, shares, avg_price FROM bets "
+            "SELECT id, shares, avg_popularity FROM bets "
             "WHERE user_id = %s AND artist_id = %s FOR UPDATE", 
             (user_id, artist_id)
         )
@@ -869,26 +869,26 @@ def buy_artist(spotify_id):
         if bet:
             bet_id, current_shares, current_avg = bet
             total_shares = current_shares + shares
-            new_avg = ((current_shares * current_avg) + (shares * price)) / total_shares
+            new_avg = ((current_shares * current_avg) + (shares * popularity)) / total_shares
             cursor.execute(
-                "UPDATE bets SET shares = %s, avg_price = %s, timestamp = NOW() "
+                "UPDATE bets SET shares = %s, avg_popularity = %s, timestamp = NOW() "
                 "WHERE id = %s", 
                 (total_shares, new_avg, bet_id)
             )
         else:
             cursor.execute(
-                "INSERT INTO bets (user_id, artist_id, shares, avg_price) "
+                "INSERT INTO bets (user_id, artist_id, shares, avg_popularity) "
                 "VALUES (%s, %s, %s, %s)", 
-                (user_id, artist_id, shares, price)
+                (user_id, artist_id, shares, popularity)
             )
         
         # Record transaction
         cursor.execute("""
             INSERT INTO transactions 
-            (user_id, artist_id, transaction_type, shares, price_per_share, 
+            (user_id, artist_id, transaction_type, shares, popularity_per_share, 
              total_amount, caption, privacy)
             VALUES (%s, %s, 'buy', %s, %s, %s, %s, %s)
-        """, (user_id, artist_id, shares, price, total_cost, caption, privacy))
+        """, (user_id, artist_id, shares, popularity, total_cost, caption, privacy))
         
         # COMMIT ATOMIC TRANSACTION
         conn.commit()
@@ -934,19 +934,19 @@ def sell_artist(spotify_id):
             return "Artist not found", 404
         artist_id = artist_row[0]
         
-        # Get current price
+        # Get current popularity
         cursor.execute(
-            "SELECT price FROM artist_history WHERE spotify_id = %s "
+            "SELECT popularity FROM artist_history WHERE spotify_id = %s "
             "ORDER BY recorded_at DESC LIMIT 1",
             (spotify_id,)
         )
-        price_row = cursor.fetchone()
-        price = float(price_row[0]) if price_row else 0.0
-        total_value = shares * price
+        popularity_row = cursor.fetchone()
+        popularity = float(popularity_row[0]) if popularity_row else 0.0
+        total_value = shares * popularity
         
         # Check holdings with lock
         cursor.execute(
-            "SELECT id, shares, avg_price FROM bets "
+            "SELECT id, shares, avg_popularity FROM bets "
             "WHERE user_id = %s AND artist_id = %s FOR UPDATE",
             (user_id, artist_id)
         )
@@ -955,7 +955,7 @@ def sell_artist(spotify_id):
             conn.rollback()
             return "Not enough shares to sell", 400
             
-        bet_id, current_shares, avg_price = bet
+        bet_id, current_shares, avg_popularity = bet
         new_shares = current_shares - shares
         
         # Update or delete bet
@@ -976,10 +976,10 @@ def sell_artist(spotify_id):
         # Record transaction
         cursor.execute("""
             INSERT INTO transactions 
-            (user_id, artist_id, transaction_type, shares, price_per_share,
+            (user_id, artist_id, transaction_type, shares, popularity_per_share,
              total_amount, caption, privacy)
             VALUES (%s, %s, 'sell', %s, %s, %s, %s, %s)
-        """, (user_id, artist_id, shares, price, total_value, caption, privacy))
+        """, (user_id, artist_id, shares, popularity, total_value, caption, privacy))
         
         # COMMIT ATOMIC TRANSACTION
         conn.commit()
@@ -1031,22 +1031,22 @@ def portfolio(user_id=None):
         # For display purposes, only show balance for own portfolio
         balance = actual_balance if is_own_portfolio else 0.0
         
-        # Get all user's holdings with current prices
+        # Get all user's holdings with current popularity
         cursor.execute("""
-            WITH latest_prices AS (
-                SELECT DISTINCT ON (spotify_id) spotify_id, price
+            WITH latest_popularity AS (
+                SELECT DISTINCT ON (spotify_id) spotify_id, popularity
                 FROM artist_history
                 ORDER BY spotify_id, recorded_at DESC
             )
             SELECT 
                 a.name,
                 b.shares,
-                b.avg_price,
-                lp.price as current_price,
+                b.avg_popularity,
+                lp.popularity as current_popularity,
                 a.spotify_id
             FROM bets b
             JOIN artists a ON b.artist_id = a.id
-            JOIN latest_prices lp ON a.spotify_id = lp.spotify_id
+            JOIN latest_popularity lp ON a.spotify_id = lp.spotify_id
             WHERE b.user_id = %s
         """, (user_id,))
         
@@ -1061,13 +1061,13 @@ def portfolio(user_id=None):
             for h in raw_holdings:
                 name = h[0]
                 shares = float(h[1]) if h[1] is not None else 0
-                avg_price = float(h[2]) if h[2] is not None else 0
-                current_price = float(h[3]) if h[3] is not None else 0
+                avg_popularity = float(h[2]) if h[2] is not None else 0
+                current_popularity = float(h[3]) if h[3] is not None else 0
                 spotify_id = h[4]
                 
                 # Calculate values for this holding
-                value = shares * current_price
-                cost = shares * avg_price
+                value = shares * current_popularity
+                cost = shares * avg_popularity
                 gain = value - cost
                 percent_gain = ((gain / cost) * 100) if cost > 0 else 0
                 
@@ -1100,8 +1100,8 @@ def portfolio(user_id=None):
                 holding = {
                     'name': name,
                     'shares': shares,
-                    'avg_price': avg_price,
-                    'current_price': current_price,
+                    'avg_price': avg_popularity,
+                    'current_price': current_popularity,
                     'value': value,
                     'gain': gain,
                     'percent_gain': percent_gain,
@@ -1155,8 +1155,8 @@ def portfolio(user_id=None):
                     a.spotify_id,
                     t.transaction_type,
                     t.shares,
-                    t.price_per_share,
-                    COALESCE(t.total_amount, t.shares * t.price_per_share) as total_amount,
+                    t.popularity_per_share,
+                    COALESCE(t.total_amount, t.shares * t.popularity_per_share) as total_amount,
                     t.created_at,
                     ah.popularity
                 FROM transactions t
@@ -1168,7 +1168,7 @@ def portfolio(user_id=None):
                     CASE WHEN %s = 'date' THEN t.created_at END DESC,
                     CASE WHEN %s = 'artist' THEN a.name END ASC,
                     CASE WHEN %s = 'shares' THEN t.shares END DESC,
-                    CASE WHEN %s = 'total_amount' THEN COALESCE(t.total_amount, t.shares * t.price_per_share) END DESC
+                    CASE WHEN %s = 'total_amount' THEN COALESCE(t.total_amount, t.shares * t.popularity_per_share) END DESC
             """, (user_id, history_order, history_order, history_order, history_order))
             
             trade_data = cursor.fetchall()
@@ -1484,7 +1484,7 @@ def feed():
         if view_mode == 'public':
             # Show all public transactions
             cursor.execute("""
-                SELECT t.id, t.transaction_type, t.shares, t.price_per_share, t.total_amount, 
+                SELECT t.id, t.transaction_type, t.shares, t.popularity_per_share, t.total_amount, 
                        t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id,
                        COUNT(tl.id) as like_count,
                        COUNT(tc.id) as comment_count,
@@ -1497,7 +1497,7 @@ def feed():
                 LEFT JOIN transaction_likes tl ON t.id = tl.transaction_id
                 LEFT JOIN transaction_comments tc ON t.id = tc.transaction_id
                 WHERE t.privacy = 'public'
-                GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_amount, 
+                GROUP BY t.id, t.transaction_type, t.shares, t.popularity_per_share, t.total_amount, 
                          t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id, t.privacy
                 ORDER BY t.created_at DESC
                 LIMIT 50
@@ -1505,7 +1505,7 @@ def feed():
         elif view_mode == 'self':
             # Show only current user's transactions
             cursor.execute("""
-                SELECT t.id, t.transaction_type, t.shares, t.price_per_share, t.total_amount, 
+                SELECT t.id, t.transaction_type, t.shares, t.popularity_per_share, t.total_amount, 
                        t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id,
                        COUNT(tl.id) as like_count,
                        COUNT(tc.id) as comment_count,
@@ -1518,7 +1518,7 @@ def feed():
                 LEFT JOIN transaction_likes tl ON t.id = tl.transaction_id
                 LEFT JOIN transaction_comments tc ON t.id = tc.transaction_id
                 WHERE t.user_id = %s
-                GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_amount, 
+                GROUP BY t.id, t.transaction_type, t.shares, t.popularity_per_share, t.total_amount, 
                          t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id, t.privacy
                 ORDER BY t.created_at DESC
                 LIMIT 50
@@ -1526,7 +1526,7 @@ def feed():
         else:  # followers
             # Show transactions from users the current user follows + their own
             cursor.execute("""
-                SELECT t.id, t.transaction_type, t.shares, t.price_per_share, t.total_amount, 
+                SELECT t.id, t.transaction_type, t.shares, t.popularity_per_share, t.total_amount, 
                        t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id,
                        COUNT(tl.id) as like_count,
                        COUNT(tc.id) as comment_count,
@@ -1548,7 +1548,7 @@ def feed():
                            SELECT followed_id FROM follows 
                            WHERE follower_id = %s AND status = 'accepted'
                        ))))
-                GROUP BY t.id, t.transaction_type, t.shares, t.price_per_share, t.total_amount, 
+                GROUP BY t.id, t.transaction_type, t.shares, t.popularity_per_share, t.total_amount, 
                          t.caption, t.created_at, u.username, a.name, a.image_url, a.spotify_id, t.privacy
                 ORDER BY t.created_at DESC
                 LIMIT 50
@@ -1770,20 +1770,20 @@ def record_portfolio_history():
                 balance_result = cursor.fetchone()
                 balance = float(balance_result[0]) if balance_result and balance_result[0] is not None else 0.0
                 
-                # Get user's holdings with current prices
+                # Get user's holdings with current popularity
                 cursor.execute("""
-                    WITH latest_prices AS (
-                        SELECT DISTINCT ON (spotify_id) spotify_id, price
+                    WITH latest_popularity AS (
+                        SELECT DISTINCT ON (spotify_id) spotify_id, popularity
                         FROM artist_history
                         ORDER BY spotify_id, recorded_at DESC
                     )
                     SELECT 
                         b.shares,
-                        b.avg_price,
-                        lp.price as current_price
+                        b.avg_popularity,
+                        lp.popularity as current_popularity
                     FROM bets b
                     JOIN artists a ON b.artist_id = a.id
-                    JOIN latest_prices lp ON a.spotify_id = lp.spotify_id
+                    JOIN latest_popularity lp ON a.spotify_id = lp.spotify_id
                     WHERE b.user_id = %s
                 """, (user_id,))
                 
@@ -1795,11 +1795,11 @@ def record_portfolio_history():
                 
                 for holding in holdings:
                     shares = float(holding[0]) if holding[0] is not None else 0
-                    avg_price = float(holding[1]) if holding[1] is not None else 0
-                    current_price = float(holding[2]) if holding[2] is not None else 0
+                    avg_popularity = float(holding[1]) if holding[1] is not None else 0
+                    current_popularity = float(holding[2]) if holding[2] is not None else 0
                     
-                    total_invested += shares * avg_price
-                    current_value += shares * current_price
+                    total_invested += shares * avg_popularity
+                    current_value += shares * current_popularity
                 
                 total_points = balance + current_value
                 
@@ -1865,17 +1865,17 @@ def get_artist_history_api(spotify_id):
         
         artist_name = artist_row[0]
         
-        # Get price history for the specified time range
+        # Get popularity history for the specified time range
         if time_range == 'all':
             cursor.execute("""
-                SELECT recorded_at, price 
+                SELECT recorded_at, popularity 
                 FROM artist_history 
                 WHERE spotify_id = %s 
                 ORDER BY recorded_at ASC
             """, (spotify_id,))
         else:
             cursor.execute("""
-                SELECT recorded_at, price 
+                SELECT recorded_at, popularity 
                 FROM artist_history 
                 WHERE spotify_id = %s 
                     AND recorded_at >= NOW() - INTERVAL %s
@@ -1898,12 +1898,12 @@ def get_artist_history_api(spotify_id):
         
         for row in history:
             recorded_at = row[0]
-            price = float(row[1])
+            popularity = float(row[1])
             
             # Use ISO format for proper time parsing
             chart_data['datasets'][0]['data'].append({
                 'x': recorded_at.isoformat(),
-                'y': price
+                'y': popularity
             })
         
         return chart_data
