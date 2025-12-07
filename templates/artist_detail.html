@@ -372,7 +372,7 @@
     
     let action = '';
     let maxShares = {{ (holdings[0] if holdings else 0) | tojson }};
-    let price = {{ current_price | float | round(2) | tojson }};
+    let price = {{ current_popularity | float | round(2) | tojson }};
     
     buyBtn.onclick = function() {
         action = 'buy';

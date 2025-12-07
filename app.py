@@ -1181,7 +1181,7 @@ def portfolio(user_id=None):
                     'spotify_id': trade[2],
                     'transaction_type': trade[3],  # 'buy' or 'sell'
                     'shares': int(trade[4]) if trade[4] else 0,
-                    'price_per_share': float(trade[5]) if trade[5] else 0.0,
+                    'popularity_per_share': float(trade[5]) if trade[5] else 0.0,
                     'total_amount': float(trade[6]) if trade[6] else 0.0,
                     'created_at': created_at,
                     'popularity': int(trade[8]) if trade[8] else 0,
